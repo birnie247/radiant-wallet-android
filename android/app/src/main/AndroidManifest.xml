@@ -42,4 +42,13 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Hardware-backed biometric unlock (AndroidKeyStore + BiometricPrompt). -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+    <!--
+      minSdk is 26, and on API 26-27 androidx.biometric falls back to the
+      framework FingerprintManager, which will not report hardware or enrolment
+      (and refuses to show a prompt) without this permission. It is a normal,
+      install-time permission; USE_BIOMETRIC above covers API 28 and later.
+    -->
+    <uses-permission
+        android:name="android.permission.USE_FINGERPRINT"
+        android:maxSdkVersion="27" />
 </manifest>

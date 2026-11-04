@@ -1,6 +1,11 @@
-﻿import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { deleteVault } from "../lib/vault";
-import { biometricStatus, type BiometricStatus } from "../lib/biometric";
+import {
+  biometricStatus,
+  cancelBiometricPrompt,
+  isBiometricCancellation,
+  type BiometricStatus,
+} from "../lib/biometric";
 
 export default function Unlock({
   onUnlock,
@@ -14,6 +19,7 @@ export default function Unlock({
   const [working, setWorking] = useState(false);
   const [confirmWipe, setConfirmWipe] = useState(false);
   const [bio, setBio] = useState<BiometricStatus | null>(null);
+  const autoPrompted = useRef(false);
 
   useEffect(() => {
     let alive = true;
@@ -49,11 +55,31 @@ export default function Unlock({
     try {
       await onBiometricUnlock();
     } catch (e) {
-      // Cancelling the system prompt is normal; stay on this screen.
-      setError((e as Error).message);
+      // Cancelling the system prompt is normal; stay on this screen quietly.
+      const message = (e as Error).message || "Biometric unlock failed";
+      setError(isBiometricCancellation(message) ? "" : message);
+    } finally {
+      // A prompt that never reports back must not leave the passphrase button
+      // disabled — the user has to keep a way into their own wallet.
       setWorking(false);
     }
   }
+
+  // Offer the prompt as soon as we know it can work: the whole point of the
+  // hardware key is that unlocking does not require hunting for a button. Only
+  // once per mount, so cancelling does not bounce straight back into the prompt.
+  useEffect(() => {
+    if (!biometricReady || autoPrompted.current) return;
+    autoPrompted.current = true;
+    void unlockWithFace();
+  }, [biometricReady]);
+
+  // Drop a prompt that is still open if this screen goes away mid-prompt.
+  useEffect(() => {
+    return () => {
+      void cancelBiometricPrompt();
+    };
+  }, []);
 
   return (
     <div className="app">
@@ -67,7 +93,9 @@ export default function Unlock({
           <div style={{ color: "var(--text-faint)", fontSize: 13 }}>
             {biometricReady
               ? "Unlock with your biometric, or your passphrase"
-              : "Enter your passphrase to unlock"}
+              : bio?.available === true && bio.reason
+                ? bio.reason
+                : "Enter your passphrase to unlock"}
           </div>
         </div>
       </div>
@@ -80,7 +108,7 @@ export default function Unlock({
               disabled={working}
               onClick={unlockWithFace}
             >
-              {working ? "Waiting for biometricâ€¦" : "Unlock with biometrics"}
+              {working ? "Waiting for biometric…" : "Unlock with biometrics"}
             </button>
             <div className="hint center">or use your passphrase</div>
           </>
@@ -106,7 +134,7 @@ export default function Unlock({
           disabled={working || passphrase.length === 0}
           onClick={submit}
         >
-          {working ? "Unlockingâ€¦" : "Unlock"}
+          {working ? "Unlocking…" : "Unlock"}
         </button>
 
         <hr className="hr" />

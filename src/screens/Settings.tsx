@@ -68,10 +68,18 @@ export default function Settings({ nav }: { nav: Nav }) {
       } else {
         await enableBiometricUnlock(session.secrets);
       }
-      setBio(await biometricStatus());
     } catch (e) {
       setBioError((e as Error).message);
     } finally {
+      // Always re-read the native state, even after a failure. If the stored key
+      // was invalidated (a new fingerprint, or the screen lock was removed) the
+      // plugin clears it, and the toggle has to fall back to "Enable" instead of
+      // stranding the user with an unlock that can never succeed.
+      try {
+        setBio(await biometricStatus());
+      } catch {
+        /* keep the last known status on screen */
+      }
       setBioBusy(false);
     }
   }

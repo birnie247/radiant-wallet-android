@@ -19,10 +19,13 @@ export const BIOMETRIC_ALIAS = "rxd-wallet-secrets";
 
 interface BiometricVaultApi {
   isAvailable(): Promise<{ available: boolean; reason: string }>;
-  isEnrolled(options: { alias: string }): Promise<{ enrolled: boolean }>;
+  isEnrolled(options: {
+    alias: string;
+  }): Promise<{ enrolled: boolean; invalidated?: boolean }>;
   enroll(options: { alias: string; secret: string }): Promise<{ ok: boolean }>;
   unlock(options: { alias: string }): Promise<{ secret: string }>;
   disable(options: { alias: string }): Promise<{ ok: boolean }>;
+  cancel(): Promise<{ ok: boolean }>;
 }
 
 const BiometricVault = registerPlugin<BiometricVaultApi>("BiometricVault");
@@ -36,39 +39,62 @@ export interface BiometricStatus {
   platform: boolean;
   available: boolean;
   enrolled: boolean;
+  /**
+   * The hardware key was invalidated by a biometric change (or by the user
+   * removing the screen lock), so the stored secret is unusable. The native side
+   * clears it in the same call, which is why `enrolled` is already false by the
+   * time this arrives.
+   */
+  invalidated: boolean;
   reason: string;
+}
+
+function offline(reason: string): BiometricStatus {
+  return {
+    platform: false,
+    available: false,
+    enrolled: false,
+    invalidated: false,
+    reason,
+  };
 }
 
 export async function biometricStatus(): Promise<BiometricStatus> {
   if (!isBiometricPlatform()) {
-    return {
-      platform: false,
-      available: false,
-      enrolled: false,
-      reason: "Biometric unlock is only available in the Android app",
-    };
+    return offline("Biometric unlock is only available in the Android app");
   }
   try {
     const availability = await BiometricVault.isAvailable();
     let enrolled = false;
+    let invalidated = false;
     if (availability.available) {
       const result = await BiometricVault.isEnrolled({ alias: BIOMETRIC_ALIAS });
-      enrolled = result.enrolled;
+      enrolled = result.enrolled === true;
+      invalidated = result.invalidated === true;
     }
     return {
       platform: true,
-      available: availability.available,
+      available: availability.available === true,
       enrolled,
-      reason: availability.reason ?? "",
+      invalidated,
+      reason: invalidated
+        ? "Your device biometrics changed — enable biometric unlock again"
+        : availability.reason ?? "",
     };
   } catch (e) {
     return {
       platform: true,
       available: false,
       enrolled: false,
+      invalidated: false,
       reason: (e as Error).message,
     };
   }
+}
+
+/** True when a biometric message is just the user backing out of the prompt. */
+export function isBiometricCancellation(message: string): boolean {
+  return /cancel/i.test(message);
 }
 
 /**
@@ -103,6 +129,16 @@ export async function unlockWithBiometric(): Promise<WalletSecrets> {
     throw new Error("Stored biometric data is incomplete — use your passphrase");
   }
   return parsed;
+}
+
+/** Drop a prompt that is still open, e.g. when its screen unmounts. */
+export async function cancelBiometricPrompt(): Promise<void> {
+  if (!isBiometricPlatform()) return;
+  try {
+    await BiometricVault.cancel();
+  } catch {
+    /* Nothing was pending. */
+  }
 }
 
 /** Remove the Keystore key and the stored ciphertext. */
