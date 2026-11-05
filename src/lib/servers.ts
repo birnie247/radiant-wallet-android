@@ -29,10 +29,23 @@ export interface ServerEntry {
   url: string;
   /** Administrator grouping; quorum requires distinct operators. */
   operator: string;
-  /** True when this endpoint answered a live handshake during development. */
+  /**
+   * True only for endpoints that answered a live `server.version` handshake.
+   * These are the ones `connect()` will try on its own — see autoCandidates().
+   */
   verified: boolean;
 }
 
+/**
+ * Last live probe: 2026-11-05. Only the two radiant4people.com mainnet endpoints
+ * answered. Everything else below (bladenet.online, radiantcore.org, and both
+ * testnet hosts) timed out, refused, or no longer resolves in DNS.
+ *
+ * They are kept in the list — flagged unverified — because they may come back
+ * and the Settings screen lets you pick one deliberately. They are NOT tried
+ * automatically, so a dead host can no longer add ~7s of silence to every
+ * connection attempt. Re-check with `npm run probe`.
+ */
 export const SERVERS: Record<NetworkName, ServerEntry[]> = {
   mainnet: [
     {
@@ -95,8 +108,9 @@ export function findServer(
 }
 
 /**
- * Ordered candidates: the user's choice first, then verified endpoints, then
- * unverified ones. Verified-first is what makes the flag mean something.
+ * Ordered candidates for the Settings list and for probing: everything we know
+ * about, verified endpoints first. `connect()` uses {@link autoCandidates}
+ * instead, which omits the dead ones.
  */
 export function candidateServers(
   network: NetworkName,
@@ -110,6 +124,25 @@ export function candidateServers(
   const urls = ordered.map((s) => s.url);
   if (!preferred) return urls;
   return [preferred, ...urls.filter((u) => u !== preferred)];
+}
+
+/**
+ * Endpoints worth trying automatically, in order: the user's explicit choice
+ * (they may have picked a host we consider unverified), then the verified ones.
+ *
+ * If a network has NO verified endpoint at all — testnet, at the time of
+ * writing — the whole list is used, because a slow failure is better than
+ * refusing to try. That is the only case where unverified hosts are attempted.
+ */
+export function autoCandidates(
+  network: NetworkName,
+  preferred?: string,
+): string[] {
+  const all = SERVERS[network];
+  const verified = all.filter((s) => s.verified).map((s) => s.url);
+  const pool = verified.length > 0 ? verified : all.map((s) => s.url);
+  if (!preferred) return pool;
+  return [preferred, ...pool.filter((u) => u !== preferred)];
 }
 
 /**

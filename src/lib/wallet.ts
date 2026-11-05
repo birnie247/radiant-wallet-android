@@ -28,7 +28,7 @@ import {
   type NetworkName,
   type Utxo,
 } from "@radiant-core/sdk";
-import { candidateServers, findServer, independentServers } from "./servers";
+import { autoCandidates, findServer, independentServers } from "./servers";
 
 export const GAP_LIMIT = 20;
 export const HARD_ADDRESS_CAP = 200;
@@ -121,29 +121,98 @@ export interface Connection {
 }
 
 /**
+ * How long the whole connection sequence may take.
+ *
+ * These are deliberately tighter than a browser default: several endpoints are
+ * tried in turn, so a generous per-host timeout multiplies into a long silence.
+ * Budgeting the sequence means "no network" surfaces in ~20s, not ~70s.
+ */
+export const CONNECT_TIMEOUT_MS = 7_000;
+export const HANDSHAKE_TIMEOUT_MS = 4_000;
+export const CONNECT_BUDGET_MS = 20_000;
+/** Never start an attempt that cannot finish inside the remaining budget. */
+const MIN_ATTEMPT_MS = 3_000;
+
+export interface ConnectOptions {
+  /** Override the endpoints to try (tests, diagnostics). */
+  candidates?: string[];
+  connectTimeoutMs?: number;
+  handshakeTimeoutMs?: number;
+  budgetMs?: number;
+}
+
+/** `wss://host:port` -> `host` for readable messages. */
+function hostOf(url: string): string {
+  return url.replace(/^wss?:\/\//, "").replace(/[:/].*$/, "");
+}
+
+/**
+ * Build a failure the user can act on.
+ *
+ * A WebSocket error carries no reason — the browser hides DNS vs refused vs
+ * blocked for security — so this reports what was tried and the usual causes
+ * instead of inventing a specific one.
+ */
+export function connectFailureMessage(
+  network: NetworkName,
+  errors: string[],
+): string {
+  const offline =
+    typeof navigator !== "undefined" && navigator.onLine === false;
+  if (offline) {
+    return "You're offline. Connect to Wi-Fi or mobile data, then try again.";
+  }
+  const lines = [
+    `Couldn't reach a Radiant ${network} server.`,
+    "Your connection may be down, or a firewall/VPN may be blocking it.",
+  ];
+  if (errors.length > 0) lines.push("", ...errors.slice(0, 4));
+  return lines.join("\n");
+}
+
+/**
  * Connect to the first ElectrumX server that completes a handshake.
- * Servers are WebSocket endpoints; a dead host is skipped rather than fatal.
+ * A dead endpoint is skipped, and the whole sequence is bounded by a budget.
  */
 export async function connect(
   network: NetworkName,
   preferred?: string,
   onAttempt?: (url: string) => void,
+  options: ConnectOptions = {},
 ): Promise<Connection> {
-  const candidates = candidateServers(network, preferred);
+  const {
+    connectTimeoutMs = CONNECT_TIMEOUT_MS,
+    handshakeTimeoutMs = HANDSHAKE_TIMEOUT_MS,
+    budgetMs = CONNECT_BUDGET_MS,
+  } = options;
+
+  const candidates = options.candidates ?? autoCandidates(network, preferred);
   if (candidates.length === 0) {
-    throw new Error(`No servers configured for ${network}`);
+    throw new Error(`No Radiant ${network} server is configured.`);
   }
 
+  const startedAt = Date.now();
   const errors: string[] = [];
+
   for (const url of candidates) {
+    const remaining = budgetMs - (Date.now() - startedAt);
+    if (remaining < MIN_ATTEMPT_MS) {
+      errors.push(`${hostOf(url)}: skipped, out of time`);
+      break;
+    }
+
     onAttempt?.(url);
     const client = new ElectrumClient({ endpoint: url, reconnect: true });
     try {
-      await withTimeout(client.connect(), 12_000, `connect ${url}`);
+      await withTimeout(
+        client.connect(),
+        Math.min(connectTimeoutMs, remaining),
+        "connect",
+      );
       await withTimeout(
         client.serverVersion("rxd-android-wallet", "1.4"),
-        8_000,
-        `handshake ${url}`,
+        Math.min(handshakeTimeoutMs, remaining),
+        "handshake",
       );
       const entry = findServer(network, url);
       return {
@@ -158,10 +227,11 @@ export async function connect(
       } catch {
         /* ignore */
       }
-      errors.push(`${url}: ${(err as Error).message}`);
+      errors.push(`${hostOf(url)}: ${(err as Error).message}`);
     }
   }
-  throw new Error(`Could not reach a Radiant server.\n${errors.join("\n")}`);
+
+  throw new Error(connectFailureMessage(network, errors));
 }
 
 export interface TipCheck {

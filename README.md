@@ -79,8 +79,41 @@ builds both in a single pass so they cannot drift, and
 The endpoints published in `@radiant-core/constants` are stale — both
 `electrum.radiant.ovh` and `electrum.radiantblockchain.org` **no longer resolve
 in DNS**, and `electrumx.radiantcore.org` accepts TCP but never completes a TLS
-handshake. `src/lib/servers.ts` uses Photonic's production list instead. Run
-`npm run probe` to re-check which endpoints are alive.
+handshake. `src/lib/servers.ts` uses Photonic's production list instead.
+
+**Last live probe: 2026-11-05** (`npm run probe`):
+
+| Endpoint | Status |
+| --- | --- |
+| `electrumx.radiant4people.com:50022` | ✅ live, 639 ms |
+| `electrumx2.radiant4people.com:50022` | ✅ live, 751 ms |
+| `radiant2/radiantus/radiant4.bladenet.online:50022` | ❌ timeout |
+| `radiantcore.org:50004` | ❌ timeout |
+| `electrumx-testnet.radiant4people.com:53002` | ❌ connection refused |
+| `testnet.bladenet.online:53002` | ❌ no longer resolves |
+
+So **testnet is currently unusable** — every testnet endpoint is gone.
+
+Dead hosts stay in `servers.ts` (flagged `verified: false`) because they may
+return and Settings lets you pick one deliberately, but `connect()` no longer
+tries them automatically:
+
+- **`autoCandidates()`** returns the user's explicit choice followed by the
+  verified endpoints only. On a network with no verified endpoint at all
+  (testnet today) it falls back to the full list rather than refusing to try.
+- **The whole sequence is budgeted**: 7 s per connection attempt, 4 s per
+  handshake, **20 s total**, and an attempt is never started if less than 3 s of
+  budget remains. Worst case went from ~70 s of silence to ~20 s, and a refused
+  connection now fails in milliseconds.
+- **The error is actionable**: "Couldn't reach a Radiant mainnet server. Your
+  connection may be down, or a firewall/VPN may be blocking it." — plus the
+  hosts tried — and if `navigator.onLine` is false it says *offline* instead of
+  blaming the servers.
+
+Verified: three blackholed hosts with a 5 s budget give up in **2008 ms**, and
+the unattempted one is reported as `skipped, out of time`. Note that a WebSocket
+error carries no reason (browsers hide DNS vs refused vs blocked), so the app
+names the likely causes rather than inventing a specific one.
 
 ---
 

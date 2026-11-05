@@ -515,6 +515,97 @@ if (process.argv.includes("--live")) {
   check("biometric confirmation is inert off-device", biometricInert);
 }
 
+// 9. Connection failure handling (security of expectations: fail fast, say why).
+{
+  const walletLib = await import("../src/lib/wallet");
+  const servers = await import("../src/lib/servers");
+
+  const verified = servers.SERVERS.mainnet
+    .filter((s) => s.verified)
+    .map((s) => s.url);
+  const auto = servers.autoCandidates("mainnet");
+  check(
+    "auto-connect tries only verified endpoints",
+    auto.length === verified.length && auto.every((u) => verified.includes(u)),
+    `${auto.length} endpoint(s): ${auto.map((u) => u.replace("wss://", "")).join(", ")}`,
+  );
+  check(
+    "the dead hosts are still listed for manual selection",
+    servers.SERVERS.mainnet.length > verified.length,
+    `${servers.SERVERS.mainnet.length} known, ${verified.length} auto`,
+  );
+
+  // Unreachable endpoints must fail fast rather than hang.
+  const started = Date.now();
+  let message = "";
+  try {
+    await walletLib.connect("mainnet", undefined, undefined, {
+      candidates: ["wss://127.0.0.1:9", "wss://127.0.0.1:10"],
+      budgetMs: 6_000,
+      connectTimeoutMs: 3_000,
+    });
+  } catch (e) {
+    message = (e as Error).message;
+  }
+  const elapsed = Date.now() - started;
+  check("dead endpoints give up inside the budget", elapsed < 7_000, `${elapsed}ms`);
+  check("failure names the hosts that were tried", /127\.0\.0\.1/.test(message));
+  check(
+    "failure suggests a cause a user can act on",
+    /connection may be down/.test(message),
+    JSON.stringify(message.split("\n")[0]),
+  );
+
+  // A blackholed host (packets dropped) is the case the user actually hit: no
+  // refusal, just silence. Verify the per-attempt timeout and the overall budget
+  // bound it, instead of the old ~70s of trying every dead host in turn.
+  const silent = Date.now();
+  let silentMessage = "";
+  try {
+    await walletLib.connect("mainnet", undefined, undefined, {
+      // TEST-NET-1: reserved, never routed, so connections hang rather than fail.
+      candidates: [
+        "wss://192.0.2.1:50022",
+        "wss://192.0.2.2:50022",
+        "wss://192.0.2.3:50022",
+      ],
+      budgetMs: 5_000,
+      connectTimeoutMs: 2_000,
+    });
+  } catch (e) {
+    silentMessage = (e as Error).message;
+  }
+  const silentElapsed = Date.now() - silent;
+  check(
+    "blackholed hosts are bounded by the budget",
+    silentElapsed < 7_000,
+    `${silentElapsed}ms for 3 unreachable hosts, 5s budget`,
+  );
+  check(
+    "unattempted hosts are reported as skipped",
+    /out of time/.test(silentMessage) || /timed out/.test(silentMessage),
+    JSON.stringify(silentMessage.split("\n").slice(3).join(" | ").slice(0, 120)),
+  );
+
+  // Offline should be reported as offline, not as "server down".
+  let stubbed = false;
+  try {
+    Object.defineProperty(globalThis.navigator, "onLine", {
+      value: false,
+      configurable: true,
+    });
+    stubbed = true;
+  } catch {
+    /* read-only in this runtime */
+  }
+  if (stubbed) {
+    const offlineMsg = walletLib.connectFailureMessage("mainnet", []);
+    check("offline is reported as offline", /offline/i.test(offlineMsg), offlineMsg);
+  } else {
+    console.log("       (navigator.onLine not stubbable here — offline case skipped)");
+  }
+}
+
 console.log(`\n${failures === 0 ? "ALL BROWSER-PATH CHECKS PASSED" : failures + " CHECK(S) FAILED"}`);
 process.exit(failures === 0 ? 0 : 1);
 
