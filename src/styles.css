@@ -169,16 +169,18 @@ body {
 }
 
 /* The mark is cyan + cream; cream is invisible on white, so light mode uses the
-   single-ink dark variant instead. */
-.brand-mark-mono {
+   single-ink dark variant instead.
+   NOTE: these selectors must out-specify `.brand-mark img` above (0,1,1) or the
+   hidden variant still renders — which stacks a second glyph underneath. */
+.brand-mark img.brand-mark-mono {
   display: none;
 }
 
 @media (prefers-color-scheme: light) {
-  .brand-mark-colour {
+  .brand-mark img.brand-mark-colour {
     display: none;
   }
-  .brand-mark-mono {
+  .brand-mark img.brand-mark-mono {
     display: block;
   }
 }
