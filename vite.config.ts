@@ -1,6 +1,17 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { readFileSync } from "node:fs";
 import { fileURLToPath, URL } from "node:url";
+
+/**
+ * The app version shown in the UI comes from package.json — the same value
+ * android/app/build.gradle derives versionName/versionCode from. Inlining just
+ * the version string (rather than importing package.json) keeps npm metadata and
+ * dependency lists out of the shipped bundle.
+ */
+const { version } = JSON.parse(
+  readFileSync(new URL("./package.json", import.meta.url), "utf8"),
+) as { version: string };
 
 export default defineConfig({
   plugins: [react()],
@@ -10,6 +21,7 @@ export default defineConfig({
     // the browser build would take the Node path and fail. Replacing the
     // expression textually also avoids a "process is not defined" ReferenceError.
     "process.browser": "true",
+    __APP_VERSION__: JSON.stringify(version),
   },
   resolve: {
     alias: {

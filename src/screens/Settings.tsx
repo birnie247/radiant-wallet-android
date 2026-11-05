@@ -307,7 +307,7 @@ export default function Settings({ nav }: { nav: Nav }) {
           <div className="row" style={{ paddingTop: 0 }}>
             <div className="grow">
               <div className="title">Radiant Wallet</div>
-              <div className="sub">v0.1.0 · non-custodial</div>
+              <div className="sub">v{__APP_VERSION__} · non-custodial</div>
             </div>
           </div>
           <div className="row">
