@@ -66,7 +66,7 @@ export default function Send({ nav }: { nav: Nav }) {
   }, []);
 
   const trimmedTo = to.trim();
-  const addressCheck = trimmedTo ? checkAddress(trimmedTo, network) : null;
+  const addressCheck = trimmedTo ? checkAddress(trimmedTo) : null;
 
   function review() {
     setError("");

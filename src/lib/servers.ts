@@ -38,8 +38,9 @@ export interface ServerEntry {
 
 /**
  * Last live probe: 2026-11-05. Only the two radiant4people.com mainnet endpoints
- * answered. Everything else below (bladenet.online, radiantcore.org, and both
- * testnet hosts) timed out, refused, or no longer resolves in DNS.
+ * answered. Everything else below (bladenet.online and radiantcore.org) timed
+ * out, and both testnet endpoints are gone — testnet support has been removed
+ * entirely, see the `testnet` entry below.
  *
  * They are kept in the list — flagged unverified — because they may come back
  * and the Settings screen lets you pick one deliberately. They are NOT tried
@@ -81,18 +82,11 @@ export const SERVERS: Record<NetworkName, ServerEntry[]> = {
     // NOTE: the bare-IP endpoint wss://82.180.136.182:50004 was removed (see
     // the trust-model note above).
   ],
-  testnet: [
-    {
-      url: "wss://electrumx-testnet.radiant4people.com:53002",
-      operator: "radiant4people.com",
-      verified: false,
-    },
-    {
-      url: "wss://testnet.bladenet.online:53002",
-      operator: "bladenet.online",
-      verified: false,
-    },
-  ],
+  // Testnet support was removed: every testnet endpoint is gone.
+  // electrumx-testnet.radiant4people.com refuses connections and
+  // testnet.bladenet.online no longer resolves, so offering the network only
+  // produced a confusing failure. The wallet is mainnet-only.
+  testnet: [],
   regtest: [],
 };
 
@@ -130,9 +124,10 @@ export function candidateServers(
  * Endpoints worth trying automatically, in order: the user's explicit choice
  * (they may have picked a host we consider unverified), then the verified ones.
  *
- * If a network has NO verified endpoint at all — testnet, at the time of
- * writing — the whole list is used, because a slow failure is better than
- * refusing to try. That is the only case where unverified hosts are attempted.
+ * If a network has NO verified endpoint at all the whole list is used, because a
+ * slow failure is better than refusing to try. With testnet removed that branch
+ * is effectively unreachable today, but it keeps the behaviour sane if every
+ * endpoint on a network is ever downgraded at once.
  */
 export function autoCandidates(
   network: NetworkName,

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { HDWallet, type NetworkName } from "@radiant-core/sdk";
+import { HDWallet } from "@radiant-core/sdk";
 import { checkPassphrase, saveVault, type WalletSecrets } from "../lib/vault";
 import { useSecureScreen } from "../lib/useSecureScreen";
 import BrandMark from "../components/BrandMark";
@@ -18,7 +18,6 @@ export default function Onboarding({
   const [step, setStep] = useState<Step>("welcome");
   const [mnemonic, setMnemonic] = useState("");
   const [restoreInput, setRestoreInput] = useState("");
-  const [network, setNetwork] = useState<NetworkName>("mainnet");
   const [passphrase, setPassphrase] = useState("");
   const [repeat, setRepeat] = useState("");
   const [savedSeed, setSavedSeed] = useState(false);
@@ -62,7 +61,7 @@ export default function Onboarding({
       return;
     }
     try {
-      HDWallet.fromMnemonic(candidate, { network });
+      HDWallet.fromMnemonic(candidate, { network: "mainnet" });
     } catch {
       setError(
         "That recovery phrase is not valid — check the words and spelling.",
@@ -90,7 +89,7 @@ export default function Onboarding({
     try {
       const secrets: WalletSecrets = {
         mnemonic,
-        network,
+        network: "mainnet",
         server: "",
         label: "Radiant",
         createdAt: Date.now(),
@@ -164,7 +163,6 @@ export default function Onboarding({
               ))}
             </div>
           </div>
-          <NetworkPicker network={network} setNetwork={setNetwork} />
           <label className="row" style={{ border: "none", cursor: "pointer" }}>
             <input
               type="checkbox"
@@ -218,7 +216,6 @@ export default function Onboarding({
               word list.
             </div>
           </div>
-          <NetworkPicker network={network} setNetwork={setNetwork} />
           {error && <div className="error">{error}</div>}
           <button className="btn primary" onClick={() => void acceptRestore()}>
             Continue
@@ -270,36 +267,6 @@ export default function Onboarding({
         {error && <div className="error">{error}</div>}
         <button className="btn primary" onClick={finish} disabled={working}>
           {working ? "Creating wallet…" : "Create wallet"}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function NetworkPicker({
-  network,
-  setNetwork,
-}: {
-  network: NetworkName;
-  setNetwork: (n: NetworkName) => void;
-}) {
-  return (
-    <div className="field">
-      <label>Network</label>
-      <div className="btn-row">
-        <button
-          className={`btn small ${network === "mainnet" ? "primary" : ""}`}
-          style={{ flex: 1 }}
-          onClick={() => setNetwork("mainnet")}
-        >
-          Mainnet
-        </button>
-        <button
-          className={`btn small ${network === "testnet" ? "primary" : ""}`}
-          style={{ flex: 1 }}
-          onClick={() => setNetwork("testnet")}
-        >
-          Testnet
         </button>
       </div>
     </div>

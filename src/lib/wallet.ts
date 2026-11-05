@@ -400,12 +400,10 @@ export type AddressCheck = { ok: true } | { ok: false; error: string };
  *
  * Radiant is a P2PKH/P2SH chain (no SegWit/bech32). We validate by re-deriving
  * the P2PKH script — an invalid base58 payload or bad checksum throws — and
- * then sanity-check the version prefix against the selected network.
+ * then check the version prefix. Mainnet only: testnet support was removed, so a
+ * testnet-looking address must be rejected rather than quietly accepted.
  */
-export function checkAddress(
-  address: string,
-  network: NetworkName,
-): AddressCheck {
+export function checkAddress(address: string): AddressCheck {
   const value = address.trim();
   if (!value) return { ok: false, error: "Enter a destination address" };
 
@@ -422,12 +420,11 @@ export function checkAddress(
     return { ok: false, error: "Unsupported address type — P2PKH only" };
   }
 
-  const first = value[0];
-  if (network === "mainnet" && !"13".includes(first)) {
-    return { ok: false, error: "That looks like a testnet address" };
-  }
-  if (network !== "mainnet" && !"mn2".includes(first)) {
-    return { ok: false, error: "That looks like a mainnet address" };
+  if (!"13".includes(value[0])) {
+    return {
+      ok: false,
+      error: "That looks like a testnet address — this wallet is mainnet only",
+    };
   }
   return { ok: true };
 }
@@ -453,7 +450,7 @@ export function buildPayment({
 }: BuildPaymentParams): PaymentPlan {
   if (amount <= 0n) throw new Error("Amount must be greater than zero");
 
-  const check = checkAddress(to, network);
+  const check = checkAddress(to);
   if (!check.ok) throw new Error(check.error);
 
   const funding: Utxo[] = scan.utxos.map((u) => ({
