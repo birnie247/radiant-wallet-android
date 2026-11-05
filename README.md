@@ -746,6 +746,30 @@ so there's no console to read. Diagnose with the debug build instead — but not
 to `true` in `capacitor.config.ts` **temporarily**, run `npx cap run android`,
 read the error in `chrome://inspect`, then set it back before shipping.
 
+## Changelog
+
+### 2026-11-04 — auto-lock on leaving the app, biometric-or-passphrase send confirmation
+
+- **Auto-lock** no longer waits 60 s. The wallet locks the moment the app leaves
+  the foreground, so coming back always lands on the Unlock screen, which raises
+  the biometric prompt (when enrolled) or asks for the passphrase. Settings →
+  Security can relax that to a 15 s / 30 s / 1 min / 5 min / 15 min grace period.
+  Detection is redundant — `visibilitychange`, `pagehide`/`pageshow`, and a
+  frozen-timer heartbeat — and a lock that falls due while a biometric prompt is
+  open is deferred, never dropped. `src/lib/useAutoLock.ts`, `src/lib/autoLock.ts`.
+- **Every send is confirmed again** with the passphrase *or* a biometric, and the
+  secret that comes back must belong to the wallet on screen — a stale biometric
+  enrolment or a replaced vault cannot sign for a different seed.
+  `src/lib/reauth.ts`, plus the "Confirm with biometrics" button in the review
+  sheet (`src/screens/Send.tsx`).
+- `npm run check:browser` gained 8 assertions covering both (auto-lock policy
+  validation, re-auth accept/reject), and a real-browser harness confirmed the
+  lock fires on hide, respects the grace period, and never fires in the
+  foreground.
+- No native/Java changes: the existing `BiometricVaultPlugin` already performs
+  per-use `AUTH_BIOMETRIC_STRONG` authentication. Existing vaults, settings and
+  server preferences are untouched.
+
 ## Licence
 
 **This project is MIT licensed** — see [LICENSE](LICENSE). Copyright (c) 2026
