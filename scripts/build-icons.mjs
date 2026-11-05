@@ -90,7 +90,39 @@ for (const r of results) {
   );
 }
 
-console.log(`\n${results.length} icons written to ${RES}`);
+// In-app / web logo marks: the same artwork, tight-cropped to its ink and
+// downscaled, so the UI can show the real Radiant mark instead of a letter in a
+// coloured tile. Transparent, so it sits on any background.
+//
+// Two variants are produced for the app: the brand colours (cyan + cream) read
+// well on the black canvas, but cream is invisible on white, so a single-ink
+// dark version is used in light mode (see BrandMark.tsx).
+function tint(img, rgb) {
+  const data = Buffer.from(img.data);
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i + 3] > 8) {
+      data[i] = rgb[0];
+      data[i + 1] = rgb[1];
+      data[i + 2] = rgb[2];
+    }
+  }
+  return { width: img.width, height: img.height, data };
+}
+
+const WEB_MARKS = [
+  { file: "src/assets/radiant-mark.png", size: 192, tint: null },
+  { file: "src/assets/radiant-mark-mono.png", size: 192, tint: [11, 16, 19] },
+  { file: "docs/radiant-mark.png", size: 192, tint: null },
+];
+for (const { file, size, tint: rgb } of WEB_MARKS) {
+  const scaled = resizeArea(mark, size, size);
+  save(file, rgb ? tint(scaled, rgb) : scaled);
+  console.log(
+    `  OK   ${file.padEnd(46)} ${String(size).padStart(3)}px  ${rgb ? "single-ink" : "transparent mark"}`,
+  );
+}
+
+console.log(`\n${results.length} launcher icons + ${WEB_MARKS.length} web marks written`);
 if (failures > 0) {
   console.error(`${failures} icon(s) outside ink tolerance`);
   process.exit(1);

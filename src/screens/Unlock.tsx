@@ -6,6 +6,7 @@ import {
   isBiometricCancellation,
   type BiometricStatus,
 } from "../lib/biometric";
+import BrandMark from "../components/BrandMark";
 
 export default function Unlock({
   onUnlock,
@@ -87,7 +88,7 @@ export default function Unlock({
         className="splash"
         style={{ justifyContent: "flex-start", paddingTop: 48 }}
       >
-        <div className="brand-mark">R</div>
+        <BrandMark />
         <div>
           <div style={{ fontWeight: 700, fontSize: 20 }}>Welcome back</div>
           <div style={{ color: "var(--text-faint)", fontSize: 13 }}>

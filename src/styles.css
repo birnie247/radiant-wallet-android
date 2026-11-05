@@ -156,13 +156,31 @@ body {
 .brand-mark {
   width: 30px;
   height: 30px;
-  border-radius: var(--radius-sm);
-  background: linear-gradient(145deg, var(--accent-light), var(--accent-dark));
-  color: var(--accent-ink);
   display: grid;
   place-items: center;
-  font-weight: 800;
-  font-size: 15px;
+  flex: 0 0 auto;
+}
+
+.brand-mark img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+/* The mark is cyan + cream; cream is invisible on white, so light mode uses the
+   single-ink dark variant instead. */
+.brand-mark-mono {
+  display: none;
+}
+
+@media (prefers-color-scheme: light) {
+  .brand-mark-colour {
+    display: none;
+  }
+  .brand-mark-mono {
+    display: block;
+  }
 }
 
 .brand-name {
@@ -618,8 +636,6 @@ textarea {
 .splash .brand-mark {
   width: 56px;
   height: 56px;
-  border-radius: var(--radius-lg);
-  font-size: 26px;
 }
 
 .danger-zone {

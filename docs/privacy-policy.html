@@ -26,8 +26,10 @@
       main { max-width: 720px; margin: 0 auto; padding: 48px 20px 80px; }
       header { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
       .mark {
-        width: 34px; height: 34px; border-radius: 8px; background: var(--accent);
-        display: grid; place-items: center; color: #001014; font-weight: 800;
+        width: 34px;
+        height: 34px;
+        display: block;
+        flex: 0 0 auto;
       }
       .eyebrow {
         font-size: 12px; letter-spacing: 0.18em; text-transform: uppercase;
@@ -64,7 +66,7 @@
   <body>
     <main>
       <header>
-        <div class="mark">R</div>
+        <img class="mark" src="./radiant-mark.png" alt="" aria-hidden="true" />
         <div class="eyebrow">Radiant Wallet</div>
       </header>
 
