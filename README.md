@@ -25,7 +25,8 @@ behaviour is the ecosystem's own proven code rather than a re-implementation.
 | Broadcast | ⚠️ implemented, not exercised with real funds |
 | Mainnet / testnet, server switch with failover | ✅ implemented |
 | Reveal recovery phrase behind passphrase re-entry | ✅ implemented |
-| Auto-lock after 60 s in background | ✅ implemented |
+| Auto-lock when the app leaves the foreground (configurable 0 s – 15 min, default immediate) | ✅ implemented |
+| Send requires the passphrase **or** a biometric, checked against the open wallet | ✅ passphrase path verified; biometric branch compiles, not device-run |
 | QR code display for receiving | ✅ implemented |
 | Transaction history with confirmation counts | ✅ verified against synthetic txs |
 | Biometric unlock (Android Keystore + BiometricPrompt) | ✅ compiles into APK; not device-run |
@@ -91,6 +92,9 @@ src/
     wallet.ts     HD discovery, balance aggregation, ref-safe payment building
     vault.ts      AES-256-GCM + PBKDF2 encrypted seed storage
     biometric.ts  JS bridge to the native Keystore/BiometricPrompt plugin
+    reauth.ts     step-up auth (passphrase or biometric) before spending
+    autoLock.ts   persisted auto-lock policy, validated on read
+    useAutoLock.ts  lock on leaving the app (visibility, pagehide, heartbeat)
     screenSecurity.ts  ref-counted FLAG_SECURE toggling
     useSecureScreen.ts React hook with automatic release on unmount
     history.ts    confirmation-annotated transaction history
@@ -101,8 +105,8 @@ src/
     Unlock.tsx      biometric or passphrase unlock, wipe
     Home.tsx        balance, activity list, funds by address
     Receive.tsx     QR + address
-    Send.tsx        compose → review → broadcast
-    Settings.tsx    servers, biometric toggle, seed backup, lock, wipe
+    Send.tsx        compose → review → confirm (biometric/passphrase) → broadcast
+    Settings.tsx    servers, auto-lock, biometric toggle, seed backup, lock, wipe
   components/
     ActivityList.tsx  history rows with confirmation badges
   shims/          browser replacements for Node internals (see below)
@@ -287,7 +291,7 @@ what is actually verified, not what was intended.
 | **HIGH-2** debug signing key, v2-only | **Fixed** | Release `signingConfig` read from `android/keystore.properties` (gitignored), R8 minification and resource shrinking. Signed with **APK Signature Scheme v2 + v3** (verified with `apksigner`; v1 is unnecessary at minSdk 26), signer `CN=Birnie`. With no keystore present, `assembleRelease` produces an **unsigned** APK instead of a debug-signed one. |
 | **MEDIUM-1** 6-char passphrase, PBKDF2 @ 310k | **Fixed** | 12-character minimum + trivial-pattern blocklist (`checkPassphrase`), PBKDF2-SHA256 raised to **600,000**, vault schema `v2`. Existing vaults still open and are **transparently re-encrypted** at the new cost on the next unlock. |
 | **MEDIUM-2** single untrusted Electrum server | **Partially fixed** | Bare-IP endpoint **removed** (an IP can't match a TLS identity); `verified` now gates connect order instead of being a label; endpoints tagged by `operator`; a cross-operator tip cross-check (`crossCheckTip`, bounded to 2 peers × 5s) warns in the UI on disagreement. **This is not SPV** — still no merkle-proof or proof-of-work verification. |
-| **LOW/MED-3** mnemonic resident in heap | **Improved** | Sending now requires passphrase re-authentication even in an unlocked session. JS still cannot zero memory. |
+| **LOW/MED-3** mnemonic resident in heap | **Improved** | Sending now requires re-authentication even in an unlocked session — the passphrase, or a biometric unwrapped by the Keystore key (`src/lib/reauth.ts`), and the secret must match the wallet on screen. The session is also dropped as soon as the app leaves the foreground (`src/lib/useAutoLock.ts`), so the mnemonic does not sit in the heap behind the app switcher. JS still cannot zero memory. |
 | **L1** FLAG_SECURE scoped | **Fixed** | Screenshot/recording blocking is now **app-wide by default**, with an explicit Settings opt-out for QR sharing; seed screens stay blocked either way (ref-counted). |
 | **L2** WebView surface | **Fixed** | Geolocation, scripted popups, multiple windows and form-data retention disabled in `MainActivity.hardenWebView()`. |
 | **L3** dev metadata in bundle | **Mitigated** | R8 strips the release bytecode; the vendored `radiantjs` `package.json` still ships inside the web bundle (informational only, no secrets). |
@@ -369,6 +373,11 @@ ever loaded into the WebView.
    slow to describe; the balance is unaffected.
 7. **The vault is not independently audited.** Standard primitives, careful
    usage, but no third-party review.
+8. **Auto-lock depends on the WebView telling the app it is hidden.** Android
+   WebView does report that when the activity is paused, and the heartbeat
+   backstop locks the wallet after ≥10 s away even if the event never arrived —
+   but no in-app lock can protect a phone that is captured while the screen is
+   still on and unlocked. That is the device screen lock's job.
 
 ## Biometric unlock — how it works
 
@@ -390,6 +399,41 @@ The passphrase vault stays the source of truth: biometric unlock is an
 additional door, never the only one. Deleting the wallet also deletes the
 Keystore key, and a wrong/failed biometric leaves you on the unlock screen with
 the passphrase available.
+
+## Auto-lock and send-time confirmation
+
+Two checks sit between "the wallet is open" and "funds move".
+
+**Auto-lock** (`src/lib/useAutoLock.ts`). The wallet locks itself as soon as the
+app leaves the foreground. Locking drops the whole `Session` — the Electrum
+socket is closed, the derived wallet and the scanned UTXOs are released, and the
+screen resets — so coming back always lands on the Unlock screen, which offers
+the biometric prompt (auto-raised when enrolled) or the passphrase. Settings →
+Security picks the policy: **Immediately** (the default), or a 15 s / 30 s /
+1 min / 5 min / 15 min grace period for people who switch apps constantly. The
+stored value is validated on read, so a tampered localStorage entry cannot turn
+locking off.
+
+Detection is deliberately redundant, because a lock that silently stops working
+is a security failure rather than a cosmetic one:
+
+| Signal | What it catches |
+| --- | --- |
+| `visibilitychange` | The Android WebView reports "hidden" when the activity is paused — the normal path. |
+| `pagehide` / `pageshow` | Navigations and bfcache restores that skip the visibility event. |
+| 1 s heartbeat | A WebView that is not being rendered stops running timers, so a ≥10 s gap in the ticks is the same evidence as a trip to the background. The floor keeps a slow PBKDF2 run from looking like one. |
+
+A biometric prompt that is open is never torn down: the lock is deferred until
+the prompt closes, so approving a payment cannot cancel the very payment being
+approved.
+
+**Send-time confirmation** (`src/lib/reauth.ts`). Every payment is authorised
+again immediately before signing, with **either** the passphrase or a biometric
+— an unlocked session in the JS heap is not sufficient on its own. Both paths
+also require that the secret returned belongs to the wallet currently on screen,
+so a stale biometric enrolment (or a vault replaced underneath the session)
+cannot sign for a different seed. This is the reason the send sheet has no
+"remember me": re-authentication is per payment, not per session.
 
 ## Design system
 

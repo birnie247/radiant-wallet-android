@@ -30,6 +30,28 @@ interface BiometricVaultApi {
 
 const BiometricVault = registerPlugin<BiometricVaultApi>("BiometricVault");
 
+/**
+ * Prompts currently on screen.
+ *
+ * The auto-lock (src/lib/useAutoLock.ts) needs to know: tearing the session down
+ * while the user is approving a payment would discard the CryptoObject the
+ * prompt is bound to and strand the action they just authenticated.
+ */
+let promptsInFlight = 0;
+
+function beginPrompt(): void {
+  promptsInFlight++;
+}
+
+function endPrompt(): void {
+  promptsInFlight = Math.max(0, promptsInFlight - 1);
+}
+
+/** True while a system biometric prompt is open. */
+export function isBiometricPromptOpen(): boolean {
+  return promptsInFlight > 0;
+}
+
 /** True only inside the Android app — the plugin does not exist on the web. */
 export function isBiometricPlatform(): boolean {
   return Capacitor.isNativePlatform();
@@ -107,10 +129,15 @@ export async function enableBiometricUnlock(
   if (!isBiometricPlatform()) {
     throw new Error("Biometric unlock is only available in the Android app");
   }
-  await BiometricVault.enroll({
-    alias: BIOMETRIC_ALIAS,
-    secret: JSON.stringify(secrets),
-  });
+  beginPrompt();
+  try {
+    await BiometricVault.enroll({
+      alias: BIOMETRIC_ALIAS,
+      secret: JSON.stringify(secrets),
+    });
+  } finally {
+    endPrompt();
+  }
 }
 
 /** Prompt for a biometric and return the wallet secrets it unwraps. */
@@ -118,17 +145,22 @@ export async function unlockWithBiometric(): Promise<WalletSecrets> {
   if (!isBiometricPlatform()) {
     throw new Error("Biometric unlock is only available in the Android app");
   }
-  const { secret } = await BiometricVault.unlock({ alias: BIOMETRIC_ALIAS });
-  let parsed: WalletSecrets;
+  beginPrompt();
   try {
-    parsed = JSON.parse(secret) as WalletSecrets;
-  } catch {
-    throw new Error("Stored biometric data is unreadable — use your passphrase");
+    const { secret } = await BiometricVault.unlock({ alias: BIOMETRIC_ALIAS });
+    let parsed: WalletSecrets;
+    try {
+      parsed = JSON.parse(secret) as WalletSecrets;
+    } catch {
+      throw new Error("Stored biometric data is unreadable — use your passphrase");
+    }
+    if (!parsed?.mnemonic) {
+      throw new Error("Stored biometric data is incomplete — use your passphrase");
+    }
+    return parsed;
+  } finally {
+    endPrompt();
   }
-  if (!parsed?.mnemonic) {
-    throw new Error("Stored biometric data is incomplete — use your passphrase");
-  }
-  return parsed;
 }
 
 /** Drop a prompt that is still open, e.g. when its screen unmounts. */

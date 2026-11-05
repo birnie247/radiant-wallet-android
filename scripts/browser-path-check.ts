@@ -434,6 +434,87 @@ if (process.argv.includes("--live")) {
   check("absurd stored iteration count rejected", tamperRejected);
 }
 
+// 9. Auto-lock policy + step-up authentication before spending.
+//    Two failure modes are worth asserting: a tampered/missing auto-lock value
+//    silently weakening the lock, and a payment being authorised with a secret
+//    that does not belong to the wallet on screen.
+{
+  const autoLock = await import("../src/lib/autoLock");
+
+  check(
+    "missing auto-lock value locks immediately",
+    autoLock.parseAutoLockMs(null) === 0,
+  );
+  check(
+    "garbage auto-lock value locks immediately",
+    autoLock.parseAutoLockMs("soon") === 0 &&
+      autoLock.parseAutoLockMs("-1") === 0 &&
+      autoLock.parseAutoLockMs("") === 0,
+  );
+  check(
+    "offered auto-lock value is honoured",
+    autoLock.parseAutoLockMs(String(5 * 60_000)) === 5 * 60_000,
+  );
+
+  autoLock.saveAutoLockMs(30_000);
+  check(
+    "auto-lock policy round-trips through storage",
+    autoLock.loadAutoLockMs() === 30_000,
+    String(autoLock.loadAutoLockMs()),
+  );
+
+  const vault = await import("../src/lib/vault");
+  const reauth = await import("../src/lib/reauth");
+
+  const mine: vault.WalletSecrets = {
+    mnemonic: "test test test",
+    network: "mainnet",
+    server: "",
+    label: "t",
+    createdAt: 1,
+  };
+  // Section 8 left a deliberately tampered vault behind.
+  await vault.saveVault("correct horse battery", mine);
+
+  let confirmed = true;
+  try {
+    await reauth.confirmWithPassphrase("correct horse battery", mine);
+  } catch {
+    confirmed = false;
+  }
+  check("passphrase confirms the wallet on screen", confirmed);
+
+  let wrongPassphraseRejected = false;
+  try {
+    await reauth.confirmWithPassphrase("wrong horse battery", mine);
+  } catch {
+    wrongPassphraseRejected = true;
+  }
+  check("wrong passphrase cannot authorise a payment", wrongPassphraseRejected);
+
+  let foreignWalletRejected = false;
+  try {
+    await reauth.confirmWithPassphrase("correct horse battery", {
+      ...mine,
+      mnemonic: "other words entirely here",
+    });
+  } catch {
+    foreignWalletRejected = true;
+  }
+  check(
+    "a secret belonging to another wallet is refused",
+    foreignWalletRejected,
+  );
+
+  let biometricInert = false;
+  try {
+    await reauth.confirmWithBiometric(mine);
+  } catch {
+    biometricInert = true;
+  }
+  check("biometric confirmation is inert off-device", biometricInert);
+}
+
 console.log(`\n${failures === 0 ? "ALL BROWSER-PATH CHECKS PASSED" : failures + " CHECK(S) FAILED"}`);
 process.exit(failures === 0 ? 0 : 1);
 

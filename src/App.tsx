@@ -5,6 +5,8 @@ import { connect, crossCheckTip, scanWallet } from "./lib/wallet";
 import { getPreferredServer } from "./lib/servers";
 import { loadHistory, type HistoryEntry } from "./lib/history";
 import { unlockWithBiometric } from "./lib/biometric";
+import { loadAutoLockMs, saveAutoLockMs } from "./lib/autoLock";
+import { useAutoLock } from "./lib/useAutoLock";
 import {
   acquireSecureScreen,
   releaseSecureScreen,
@@ -16,9 +18,6 @@ import Home from "./screens/Home";
 import Receive from "./screens/Receive";
 import Send from "./screens/Send";
 import Settings from "./screens/Settings";
-
-/** Lock the wallet automatically after this long in the background. */
-const BACKGROUND_LOCK_MS = 60_000;
 
 /** L1: screenshots are blocked app-wide unless the user opts out. */
 const ALLOW_SCREENSHOTS_KEY = "rxd.security.allowScreenshots";
@@ -39,6 +38,14 @@ export default function App() {
       return false;
     }
   });
+
+  /** How long the app may sit in the background before it locks itself. */
+  const [autoLockMs, setAutoLockMsState] = useState<number>(loadAutoLockMs);
+
+  const setAutoLockMs = useCallback((ms: number) => {
+    setAutoLockMsState(ms);
+    saveAutoLockMs(ms);
+  }, []);
 
   const setAllowScreenshots = useCallback((allow: boolean) => {
     setAllowScreenshotsState(allow);
@@ -171,19 +178,15 @@ export default function App() {
     setHistoryTotal(0);
   }, []);
 
-  // Auto-lock when the app has been in the background.
-  useEffect(() => {
-    let hiddenAt = 0;
-    const onVisibility = () => {
-      if (document.visibilityState === "hidden") {
-        hiddenAt = Date.now();
-      } else if (hiddenAt && Date.now() - hiddenAt > BACKGROUND_LOCK_MS) {
-        lock();
-      }
-    };
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => document.removeEventListener("visibilitychange", onVisibility);
-  }, [lock]);
+  // Auto-lock: the wallet locks itself as soon as the app leaves the foreground
+  // (or after a grace period, if the user has chosen one in Settings). Coming
+  // back therefore always lands on the Unlock screen, which offers the biometric
+  // prompt or the passphrase — the decrypted mnemonic does not survive the trip.
+  useAutoLock({
+    enabled: session !== null,
+    thresholdMs: autoLockMs,
+    onLock: lock,
+  });
 
   // L1: block screenshots/screen recording app-wide, not only on seed screens.
   // The refcount in screenSecurity.ts means seed screens stay protected even
@@ -246,6 +249,8 @@ export default function App() {
     tipDrift,
     allowScreenshots,
     setAllowScreenshots,
+    autoLockMs,
+    setAutoLockMs,
   };
 
   return (

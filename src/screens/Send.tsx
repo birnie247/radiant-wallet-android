@@ -1,6 +1,15 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { formatRxd, parseRxd, shortId } from "../lib/money";
-import { unlockVault } from "../lib/vault";
+import {
+  biometricStatus,
+  cancelBiometricPrompt,
+  isBiometricCancellation,
+} from "../lib/biometric";
+import {
+  confirmWithBiometric,
+  confirmWithPassphrase,
+  type ConfirmMethod,
+} from "../lib/reauth";
 import {
   FAST_FEE_RATE,
   MIN_FEE_RATE,
@@ -28,6 +37,33 @@ export default function Send({ nav }: { nav: Nav }) {
   const [txid, setTxid] = useState("");
   const [error, setError] = useState("");
   const [working, setWorking] = useState(false);
+  const [biometricReady, setBiometricReady] = useState(false);
+
+  // Is biometric confirmation on the table? The passphrase always is.
+  useEffect(() => {
+    let alive = true;
+    biometricStatus()
+      .then((status) => {
+        if (alive) {
+          setBiometricReady(
+            status.platform === true && status.available && status.enrolled,
+          );
+        }
+      })
+      .catch(() => {
+        /* biometrics are optional — the passphrase field is always there */
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // Drop a prompt that is still open if this screen goes away mid-prompt.
+  useEffect(() => {
+    return () => {
+      void cancelBiometricPrompt();
+    };
+  }, []);
 
   const trimmedTo = to.trim();
   const addressCheck = trimmedTo ? checkAddress(trimmedTo, network) : null;
@@ -49,17 +85,24 @@ export default function Send({ nav }: { nav: Nav }) {
     }
   }
 
-  async function confirm(passphrase: string) {
+  async function confirm(method: ConfirmMethod, passphrase: string) {
     if (!plan) return;
     setError("");
     setWorking(true);
     try {
       // Re-authenticate before moving funds (security report LOW/MED-3): an
       // unlocked session living in the JS heap must not, on its own, be
-      // sufficient to authorise a payment.
-      await unlockVault(passphrase);
+      // sufficient to authorise a payment. A biometric or the passphrase both
+      // prove the person holding the phone is the owner.
+      if (method === "biometric") {
+        await confirmWithBiometric(session.secrets);
+      } else {
+        await confirmWithPassphrase(passphrase, session.secrets);
+      }
     } catch (e) {
-      setError((e as Error).message);
+      // Backing out of the system prompt is not an error worth shouting about.
+      const message = (e as Error).message || "Could not confirm this payment";
+      setError(isBiometricCancellation(message) ? "" : message);
       setWorking(false);
       return;
     }
@@ -222,7 +265,9 @@ export default function Send({ nav }: { nav: Nav }) {
           amount={parseRxdSafe(amount)}
           working={working}
           error={error}
+          biometricReady={biometricReady}
           onCancel={() => {
+            void cancelBiometricPrompt();
             setPlan(null);
             setError("");
           }}
@@ -247,6 +292,7 @@ function ReviewSheet({
   amount,
   working,
   error,
+  biometricReady,
   onCancel,
   onConfirm,
 }: {
@@ -255,12 +301,21 @@ function ReviewSheet({
   amount: bigint;
   working: boolean;
   error: string;
+  biometricReady: boolean;
   onCancel: () => void;
-  onConfirm: (passphrase: string) => void;
+  onConfirm: (method: ConfirmMethod, passphrase: string) => void;
 }) {
   const total = amount + plan.fee;
   // Send-time re-authentication (security report LOW/MED-3).
   const [passphrase, setPassphrase] = useState("");
+  // Which proof is in flight, so the right button reads "…waiting".
+  const [pending, setPending] = useState<ConfirmMethod | null>(null);
+
+  const submit = (method: ConfirmMethod, secret: string) => {
+    setPending(method);
+    onConfirm(method, secret);
+  };
+
   return (
     <div className="sheet-backdrop" onClick={onCancel}>
       <div className="sheet" onClick={(e) => e.stopPropagation()}>
@@ -296,6 +351,24 @@ function ReviewSheet({
 
         {error && <div className="error">{error}</div>}
 
+        {biometricReady && (
+          <>
+            <button
+              className="btn primary"
+              disabled={working}
+              onClick={() => submit("biometric", "")}
+            >
+              {working && pending === "biometric"
+                ? "Waiting for biometric…"
+                : "Confirm with biometrics"}
+            </button>
+            <div className="hint center">
+              An unlocked wallet is not enough on its own — every payment needs
+              a biometric or your passphrase. Or use your passphrase below.
+            </div>
+          </>
+        )}
+
         <div className="field">
           <label>Confirm passphrase</label>
           <input
@@ -305,6 +378,7 @@ function ReviewSheet({
             placeholder="Re-enter to authorise this payment"
             autoCapitalize="none"
             autoCorrect="off"
+            disabled={working}
           />
           <div className="hint">
             Required even though the wallet is unlocked — this is what stops a
@@ -322,11 +396,11 @@ function ReviewSheet({
             Cancel
           </button>
           <button
-            className="btn primary"
-            onClick={() => onConfirm(passphrase)}
+            className={biometricReady ? "btn" : "btn primary"}
+            onClick={() => submit("passphrase", passphrase)}
             disabled={working || passphrase.length === 0}
           >
-            {working ? "Sending…" : "Confirm & send"}
+            {working && pending === "passphrase" ? "Sending…" : "Confirm & send"}
           </button>
         </div>
       </div>

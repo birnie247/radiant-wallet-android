@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { deleteVault, unlockVault } from "../lib/vault";
 import { SERVERS, setPreferredServer } from "../lib/servers";
+import { AUTO_LOCK_OPTIONS, describeAutoLock } from "../lib/autoLock";
 import {
   biometricStatus,
   disableBiometricUnlock,
@@ -191,6 +192,32 @@ export default function Settings({ nav }: { nav: Nav }) {
           <button className="btn" onClick={nav.lock}>
             Lock wallet now
           </button>
+
+          <div className="stack" style={{ gap: 8 }}>
+            <div style={{ fontWeight: 600, fontSize: 14 }}>Auto-lock</div>
+            <div className="btn-row" style={{ flexWrap: "wrap", gap: 8 }}>
+              {AUTO_LOCK_OPTIONS.map((option) => (
+                <button
+                  key={option.ms}
+                  className={`btn small ${
+                    nav.autoLockMs === option.ms ? "primary" : ""
+                  }`}
+                  style={{ flex: "1 1 30%" }}
+                  onClick={() => nav.setAutoLockMs(option.ms)}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+            <div className="hint">
+              {nav.autoLockMs === 0
+                ? "Locks the moment the app leaves the foreground, so coming back always asks for your biometric or passphrase."
+                : `Locks ${describeAutoLock(
+                    nav.autoLockMs,
+                  )} in the background. Coming back after that asks for your biometric or passphrase.`}
+            </div>
+          </div>
+
           <button className="btn" onClick={() => void openReveal()}>
             Show recovery phrase
           </button>
@@ -233,7 +260,8 @@ export default function Settings({ nav }: { nav: Nav }) {
               Your wallet secret is encrypted by a hardware key in the Android
               Keystore that requires a strong biometric for every use. Enrolling
               a new fingerprint invalidates the key and disables biometric
-              unlock.
+              unlock. While it is enabled, sending RXD also asks for your
+              biometric — or your passphrase — before anything is signed.
             </div>
           )}
 

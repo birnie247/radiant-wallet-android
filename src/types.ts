@@ -35,4 +35,11 @@ export interface Nav {
   tipDrift: number | null;
   allowScreenshots: boolean;
   setAllowScreenshots: (allow: boolean) => void;
+  /**
+   * Background time allowed before the wallet locks itself. 0 locks the moment
+   * the app leaves the foreground, so returning always asks for a biometric or
+   * the passphrase.
+   */
+  autoLockMs: number;
+  setAutoLockMs: (ms: number) => void;
 }
