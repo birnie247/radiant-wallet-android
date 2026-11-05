@@ -4,6 +4,7 @@ import {
   biometricStatus,
   cancelBiometricPrompt,
   isBiometricCancellation,
+  shouldAutoPromptBiometric,
   type BiometricStatus,
 } from "../lib/biometric";
 import BrandMark from "../components/BrandMark";
@@ -21,6 +22,8 @@ export default function Unlock({
   const [confirmWipe, setConfirmWipe] = useState(false);
   const [bio, setBio] = useState<BiometricStatus | null>(null);
   const autoPrompted = useRef(false);
+  /** Mirrors `working` for listeners that must not re-run on every render. */
+  const promptOpen = useRef(false);
 
   useEffect(() => {
     let alive = true;
@@ -53,6 +56,7 @@ export default function Unlock({
   async function unlockWithFace() {
     setError("");
     setWorking(true);
+    promptOpen.current = true;
     try {
       await onBiometricUnlock();
     } catch (e) {
@@ -60,19 +64,58 @@ export default function Unlock({
       const message = (e as Error).message || "Biometric unlock failed";
       setError(isBiometricCancellation(message) ? "" : message);
     } finally {
+      promptOpen.current = false;
       // A prompt that never reports back must not leave the passphrase button
       // disabled — the user has to keep a way into their own wallet.
       setWorking(false);
     }
   }
 
-  // Offer the prompt as soon as we know it can work: the whole point of the
-  // hardware key is that unlocking does not require hunting for a button. Only
-  // once per mount, so cancelling does not bounce straight back into the prompt.
+  // Offer the prompt automatically — but only while the app is really on screen.
+  //
+  // Backgrounding the app auto-locks the wallet, so this screen mounts while the
+  // app is still hidden. Prompting then presented nothing (a system prompt needs
+  // a resumed activity) and nothing retried it on return, which left the button
+  // stuck on "Waiting for biometric…" until the passphrase was used instead.
+  // So: attempt now if visible, otherwise wait for the app to come back; and drop
+  // a prompt that is still open when the app goes away again, so returning can
+  // raise a fresh one.
   useEffect(() => {
-    if (!biometricReady || autoPrompted.current) return;
-    autoPrompted.current = true;
-    void unlockWithFace();
+    if (!biometricReady) return;
+    let unmounted = false;
+
+    const attempt = () => {
+      if (document.visibilityState !== "visible") {
+        if (promptOpen.current) {
+          void cancelBiometricPrompt();
+          autoPrompted.current = false;
+        }
+        return;
+      }
+      const go = shouldAutoPromptBiometric({
+        ready: biometricReady,
+        alreadyPrompted: autoPrompted.current,
+        promptOpen: promptOpen.current,
+        visibility: document.visibilityState,
+      });
+      if (!go) return;
+      autoPrompted.current = true;
+      // Let the activity finish resuming before attaching a system prompt to it.
+      window.setTimeout(() => {
+        if (!unmounted) void unlockWithFace();
+      }, 300);
+    };
+
+    attempt();
+    document.addEventListener("visibilitychange", attempt);
+    window.addEventListener("pageshow", attempt);
+    window.addEventListener("focus", attempt);
+    return () => {
+      unmounted = true;
+      document.removeEventListener("visibilitychange", attempt);
+      window.removeEventListener("pageshow", attempt);
+      window.removeEventListener("focus", attempt);
+    };
   }, [biometricReady]);
 
   // Drop a prompt that is still open if this screen goes away mid-prompt.

@@ -114,6 +114,32 @@ export async function biometricStatus(): Promise<BiometricStatus> {
   }
 }
 
+/**
+ * Decides whether the unlock screen may raise a biometric prompt right now.
+ *
+ * A system prompt can only be presented to an app that is genuinely on screen.
+ * When the wallet auto-locks as the app goes to the background, the Unlock
+ * screen mounts while it is still hidden — asking for a prompt then produced a
+ * permanent "Waiting for biometric…" with no prompt, and nothing retried it when
+ * the app was reopened. So visibility is a hard requirement, and the caller
+ * re-asks on visibilitychange/pageshow rather than prompting blind.
+ *
+ * Extracted so the rule can be tested without a device.
+ */
+export function shouldAutoPromptBiometric(state: {
+  /** Biometric is available AND enrolled for this wallet. */
+  ready: boolean;
+  /** Already prompted once on this mount (don't re-prompt on every resume). */
+  alreadyPrompted: boolean;
+  /** A prompt is already in flight. */
+  promptOpen: boolean;
+  /** `document.visibilityState`. */
+  visibility: string;
+}): boolean {
+  if (!state.ready || state.alreadyPrompted || state.promptOpen) return false;
+  return state.visibility === "visible";
+}
+
 /** True when a biometric message is just the user backing out of the prompt. */
 export function isBiometricCancellation(message: string): boolean {
   return /cancel/i.test(message);

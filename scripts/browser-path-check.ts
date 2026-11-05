@@ -663,6 +663,35 @@ if (process.argv.includes("--live")) {
   check("prompt errors propagate unchanged", propagated === "User cancelled", propagated);
 }
 
+// 11. Auto-prompt gating — the "press Home, reopen, stuck on Waiting for
+//     biometric" bug. A prompt may only be raised while the app is on screen.
+{
+  const bio = await import("../src/lib/biometric");
+  const base = {
+    ready: true,
+    alreadyPrompted: false,
+    promptOpen: false,
+    visibility: "visible",
+  };
+  check("prompts when visible and idle", bio.shouldAutoPromptBiometric(base));
+  check(
+    "never prompts while the app is hidden",
+    !bio.shouldAutoPromptBiometric({ ...base, visibility: "hidden" }),
+  );
+  check(
+    "does not re-prompt after one attempt",
+    !bio.shouldAutoPromptBiometric({ ...base, alreadyPrompted: true }),
+  );
+  check(
+    "does not stack a second prompt",
+    !bio.shouldAutoPromptBiometric({ ...base, promptOpen: true }),
+  );
+  check(
+    "waits until biometric is ready",
+    !bio.shouldAutoPromptBiometric({ ...base, ready: false }),
+  );
+}
+
 console.log(`\n${failures === 0 ? "ALL BROWSER-PATH CHECKS PASSED" : failures + " CHECK(S) FAILED"}`);
 process.exit(failures === 0 ? 0 : 1);
 
