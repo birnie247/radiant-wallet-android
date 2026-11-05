@@ -606,6 +606,63 @@ if (process.argv.includes("--live")) {
   }
 }
 
+// 10. Biometric prompt timeout — the "stuck at Waiting for biometric" bug.
+//     An unanswered system prompt used to hang the UI forever and leave the
+//     plugin thinking a request was in flight.
+{
+  const bio = await import("../src/lib/biometric");
+
+  let cancelled = 0;
+  const started = Date.now();
+  let timedOut = "";
+  try {
+    await bio.raceWithTimeout(
+      new Promise(() => {}), // never settles, like a prompt nobody answers
+      150,
+      () => {
+        cancelled++;
+      },
+      "timed out (test)",
+    );
+  } catch (e) {
+    timedOut = (e as Error).message;
+  }
+  check(
+    "unanswered prompt rejects instead of hanging",
+    /timed out/.test(timedOut),
+    `${Date.now() - started}ms`,
+  );
+  check("timeout dismisses the native prompt", cancelled === 1, `${cancelled} cancel(s)`);
+
+  // A prompt that IS answered must not be cancelled afterwards.
+  cancelled = 0;
+  const value = await bio.raceWithTimeout(
+    Promise.resolve("unwrapped-secret"),
+    200,
+    () => {
+      cancelled++;
+    },
+    "timed out (test)",
+  );
+  check("answered prompt resolves with its value", value === "unwrapped-secret");
+  await new Promise((r) => setTimeout(r, 260));
+  check("answered prompt is not cancelled later", cancelled === 0, `${cancelled} cancel(s)`);
+
+  // Wrong finger / user backed out must surface as-is, not as a timeout.
+  let propagated = "";
+  try {
+    await bio.raceWithTimeout(
+      Promise.reject(new Error("User cancelled")),
+      200,
+      () => undefined,
+      "timed out (test)",
+    );
+  } catch (e) {
+    propagated = (e as Error).message;
+  }
+  check("prompt errors propagate unchanged", propagated === "User cancelled", propagated);
+}
+
 console.log(`\n${failures === 0 ? "ALL BROWSER-PATH CHECKS PASSED" : failures + " CHECK(S) FAILED"}`);
 process.exit(failures === 0 ? 0 : 1);
 

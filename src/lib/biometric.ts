@@ -120,6 +120,46 @@ export function isBiometricCancellation(message: string): boolean {
 }
 
 /**
+ * How long to wait for an answer to a prompt before giving up.
+ *
+ * The native side has its own 120s watchdog, but the JS caller must not depend
+ * on that arriving: an unanswered prompt used to leave the UI stuck on
+ * "Waiting for biometric…" forever, with every retry rejected because the
+ * plugin still thought a request was in flight. This is the layer the user
+ * actually sees, so it gives up first and says something useful.
+ */
+export const PROMPT_TIMEOUT_MS = 75_000;
+
+/**
+ * Resolve with `work`, or reject with `message` after `ms` — running
+ * `onTimeout` first so any native prompt is actually dismissed.
+ *
+ * Extracted so the timing behaviour can be tested without a device.
+ */
+export async function raceWithTimeout<T>(
+  work: Promise<T>,
+  ms: number,
+  onTimeout: () => void | Promise<void>,
+  message: string,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      Promise.resolve(onTimeout()).catch(() => undefined);
+      reject(new Error(message));
+    }, ms);
+  });
+  try {
+    return await Promise.race([work, timeout]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
+const TIMED_OUT =
+  "The biometric prompt timed out. Unlock with your passphrase instead.";
+
+/**
  * Encrypt the wallet secrets under the biometric key.
  * Triggers a system biometric prompt; the user must confirm.
  */
@@ -131,10 +171,15 @@ export async function enableBiometricUnlock(
   }
   beginPrompt();
   try {
-    await BiometricVault.enroll({
-      alias: BIOMETRIC_ALIAS,
-      secret: JSON.stringify(secrets),
-    });
+    await raceWithTimeout(
+      BiometricVault.enroll({
+        alias: BIOMETRIC_ALIAS,
+        secret: JSON.stringify(secrets),
+      }),
+      PROMPT_TIMEOUT_MS,
+      cancelBiometricPrompt,
+      TIMED_OUT,
+    );
   } finally {
     endPrompt();
   }
@@ -147,7 +192,12 @@ export async function unlockWithBiometric(): Promise<WalletSecrets> {
   }
   beginPrompt();
   try {
-    const { secret } = await BiometricVault.unlock({ alias: BIOMETRIC_ALIAS });
+    const { secret } = await raceWithTimeout(
+      BiometricVault.unlock({ alias: BIOMETRIC_ALIAS }),
+      PROMPT_TIMEOUT_MS,
+      cancelBiometricPrompt,
+      TIMED_OUT,
+    );
     let parsed: WalletSecrets;
     try {
       parsed = JSON.parse(secret) as WalletSecrets;

@@ -4,6 +4,8 @@ import android.app.Activity;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 import android.security.keystore.KeyGenParameterSpec;
 import android.security.keystore.KeyPermanentlyInvalidatedException;
 import android.security.keystore.KeyProperties;
@@ -79,6 +81,19 @@ public class BiometricVaultPlugin extends Plugin {
     private boolean pendingEncrypt;
     private String pendingPlaintext;
     private BiometricPrompt activePrompt;
+
+    /**
+     * Hard ceiling on how long a prompt may stay unanswered.
+     *
+     * Without this, an abandoned prompt (screen off, an emulator with no finger
+     * touching the sensor, a user who walks away) leaves `pendingCall` set for
+     * the lifetime of the process: the caller waits forever and every later
+     * attempt is rejected with "another request is already in progress".
+     */
+    private static final long PROMPT_TIMEOUT_MS = 120_000L;
+
+    private final Handler watchdog = new Handler(Looper.getMainLooper());
+    private Runnable watchdogTask;
 
     private SharedPreferences prefs() {
         return getContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
@@ -323,6 +338,20 @@ public class BiometricVaultPlugin extends Plugin {
         if (call != null) call.reject(reason);
     }
 
+    /** Arm the watchdog for a prompt that is about to be shown. */
+    private void armWatchdog() {
+        disarmWatchdog();
+        watchdogTask = () -> cancelInFlight("Biometric prompt timed out");
+        watchdog.postDelayed(watchdogTask, PROMPT_TIMEOUT_MS);
+    }
+
+    private void disarmWatchdog() {
+        if (watchdogTask != null) {
+            watchdog.removeCallbacks(watchdogTask);
+            watchdogTask = null;
+        }
+    }
+
     private void showPrompt(Cipher cipher, String title, String subtitle) {
         if (!(getActivity() instanceof FragmentActivity)) {
             failPending("No foreground activity to show the biometric prompt in");
@@ -370,6 +399,7 @@ public class BiometricVaultPlugin extends Plugin {
                         });
 
                 activePrompt = prompt;
+                armWatchdog();
                 // Signature is authenticate(PromptInfo, CryptoObject) - the
                 // cipher MUST be bound to the prompt this way, otherwise the
                 // decryption could be performed without the user's biometric.
@@ -427,6 +457,7 @@ public class BiometricVaultPlugin extends Plugin {
     }
 
     private void clearPending() {
+        disarmWatchdog();
         pendingCall = null;
         pendingAlias = null;
         pendingCiphertext = null;
