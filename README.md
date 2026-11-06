@@ -1,89 +1,279 @@
 # Radiant Wallet — non-custodial RXD for Android
 
 A self-custody wallet for the [Radiant](https://radiantblockchain.org) (RXD)
-blockchain. Your recovery phrase is generated on the device, encrypted on the
-device, and used to sign transactions on the device. No server ever sees a
-private key.
+blockchain. The recovery phrase is generated, encrypted and used to sign
+entirely on the device; no server ever sees a private key.
 
 Built with **React + TypeScript + Capacitor**, signing through
-[`@radiant-core/sdk`](https://www.npmjs.com/package/@radiant-core/sdk) — the
-same library that powers Photonic Wallet — so Radiant-specific consensus
-behaviour is the ecosystem's own proven code rather than a re-implementation.
+[`@radiant-core/sdk`](https://www.npmjs.com/package/@radiant-core/sdk) — the same
+library that powers Photonic Wallet — so Radiant's consensus behaviour is the
+ecosystem's own proven code rather than a re-implementation.
 
----
-
-## What works today
-
-| Flow | Status |
+|  |  |
 | --- | --- |
-| Create wallet (BIP39 12-word) with encrypted backup | ✅ verified |
-| Restore from 12/15/18/21/24-word phrase (checksum validated) | ✅ verified |
-| Encrypted seed at rest (AES-256-GCM, PBKDF2-SHA256 600k, 12-char min) | ✅ implemented |
-| BIP44 discovery, gap limit 20, receive + change chains | ✅ verified |
-| Live balance / UTXO fetch over ElectrumX WebSocket | ✅ verified vs mainnet |
-| Ref-safe send with review screen | ✅ signing verified offline |
-| Broadcast | ⚠️ implemented, not exercised with real funds |
-| Mainnet / testnet, server switch with failover | ✅ implemented |
-| Reveal recovery phrase behind passphrase re-entry | ✅ implemented |
-| Auto-lock when the app leaves the foreground (configurable 0 s – 15 min, default immediate) | ✅ implemented |
-| Send requires the passphrase **or** a biometric, checked against the open wallet | ✅ passphrase path verified; biometric branch compiles, not device-run |
-| QR code display for receiving | ✅ implemented |
-| Transaction history with confirmation counts | ✅ verified against synthetic txs |
-| Tap a transaction to open it in a block explorer | ✅ live link verified (HTTP 200) |
-| Biometric unlock (Android Keystore + BiometricPrompt) | ✅ verified on device (enrol + unlock) |
-| Recovery phrase blocks screenshots & screen recording | ✅ verified on device (`SECURE` window flag) |
-| USD value of the balance (CoinGecko, cached) | ✅ live API verified; opt-out in Settings |
-| **QR scanning, Glyph tokens, WAVE names** | ❌ not yet |
+| Version | 1.0.10 |
+| Licence | MIT, with Apache-2.0 artwork |
+| Android | minSdk 26 · targetSdk 36 |
+| Chain access | ElectrumX over WebSocket |
+| Distribution | signed APK, sideloaded |
 
-> **Honest caveat:** no transaction has been broadcast to mainnet from this code
-> by me, because that requires funds. Everything up to and including a valid
-> signature is verified. Treat the first real send as a test: start small.
+**Contents:** [Status](#status) · [Quick start](#quick-start) ·
+[Install and update](#install-and-update) · [How it works](#how-it-works) ·
+[Radiant specifics](#radiant-specifics) · [Architecture](#architecture) ·
+[Testing](#testing) · [Security](#security) · [Releasing](#releasing) ·
+[Known issues and roadmap](#known-issues-and-roadmap) · [Licence](#licence)
 
 ---
 
-## Radiant-specific facts (verified, not assumed)
+## Status
 
-Checked against the live chain, Radiant Core constants and the production
-Photonic Wallet config. Getting any of them wrong produces a wallet that
-silently derives the wrong addresses or burns tokens.
+The distinction this repo keeps coming back to is **verified** versus **assumed**.
+
+| Area | Status |
+| --- | --- |
+| Create wallet (BIP39 12-word) and restore 12–24 words | ✅ verified |
+| Seed encrypted at rest (AES-256-GCM, PBKDF2-SHA256 600k, 12-char minimum) | ✅ implemented |
+| BIP44 discovery, gap limit 20, receive + change chains | ✅ verified |
+| Balance, UTXOs and history over ElectrumX | ✅ verified against mainnet |
+| Ref-safe send with review, confirmed by passphrase or biometric | ✅ signing verified offline; passphrase path device-tested |
+| Broadcast | ⚠️ implemented, **never exercised with real funds** |
+| Live balance updates (server push + backstop poll) | ✅ push accepted by the live server |
+| Transaction history with confirmation counts | ✅ verified against synthetic transactions |
+| Tap a transaction to open it in a block explorer | ✅ live link returns HTTP 200 |
+| Biometric unlock (AndroidKeyStore + BiometricPrompt) | ✅ verified on device, enrol and unlock |
+| Screenshots and recording blocked for the seed | ✅ verified on device (`SECURE` window flag) |
+| Auto-lock when the app leaves the foreground | ✅ device-tested |
+| USD value of the balance | ✅ live API verified, opt-out |
+| Mainnet only | ✅ testnet removed — every testnet endpoint is dead |
+| QR scanning · Glyph tokens · WAVE names | ❌ not implemented |
+
+> **The one caveat that matters:** no transaction has been broadcast to mainnet
+> from this code, because that needs funds. Everything up to and including a valid
+> signature is verified. Treat the first real send as a test — start small.
+
+## Quick start
+
+```bash
+npm install
+npm run dev          # http://localhost:5173
+```
+
+The app runs in an ordinary browser, so the whole UI is developable without an
+emulator — Web Crypto and WebSocket both work over `localhost`.
+
+## Install and update
+
+```powershell
+npm run release      # web build → cap sync → signed APK → signature verified
+# → dist-android/radiant-wallet-<version>.apk
+
+C:\Android\Sdk\platform-tools\adb.exe install -r "dist-android\radiant-wallet-1.0.10.apk"
+```
+
+Or copy the `.apk` to the phone and tap it, allowing "install unknown apps" for
+whichever app opens it. Android 8.0+ (minSdk 26).
+
+**Updating keeps your wallet, as long as the signing key does not change.**
+Android identifies an app by package name *plus* signing certificate:
+
+| Situation | Result |
+| --- | --- |
+| Same keystore, higher `versionCode` | Updates in place; wallet data survives |
+| Different or new keystore | Must uninstall first → **local vault erased** |
+
+So back up `android/rxd-release.jks` and `android/keystore.properties` together,
+offline. Both are gitignored and must never be committed. The real backup is the
+recovery phrase, not the APK. [Releasing](#releasing) covers the keytool command
+and versioning.
+
+## How it works
+
+### Chain access
+
+Radiant is read over **ElectrumX WebSocket** endpoints (`wss://`). `connect()`
+tries the user's chosen server first, then the curated ones, and the sequence is
+budgeted: 7 s per connection, 4 s per handshake, **20 s total**, with no attempt
+started while under 3 s of budget remains. A refused connection fails in
+milliseconds; a blackholed one in about 2 s.
+
+Failures are phrased for a human — *"Couldn't reach a Radiant mainnet server. Your
+connection may be down, or a firewall/VPN may be blocking it."* — and when
+`navigator.onLine` is false it says *offline* instead of blaming the servers.
+
+### Live balance updates
+
+Only one part of this is a timer.
+
+1. **Server push (primary).** After each scan the app subscribes
+   (`blockchain.scripthash.subscribe`) to every address with history plus the next
+   3 unused ones, so a payment to a fresh address also appears without a tap.
+2. **Debounce and settle window.** One payment touches several addresses (payment
+   plus change), so a burst produces a single re-scan. Notifications in the first
+   second after subscribing are ignored — some servers echo the current status on
+   subscribe, and treating that as news would create a
+   scan→resubscribe→scan loop.
+3. **Backstop poll.** A 60 s scan, only while the app is visible, for a server that
+   does not push or a socket that died silently.
+4. **Manual.** The Refresh button, and once after sending.
+
+Background scans are silent — no "Refreshing…" overlay — so an incoming payment
+never interrupts what you were doing. Subscriptions are torn down on lock, on
+server switch and on unmount, before the socket closes.
+
+### History and confirmations
+
+`src/lib/history.ts` builds the confirmation-annotated history using standard
+ElectrumX calls only (`scripthash.get_history`, `transaction.get`,
+`block.header`). Each transaction is resolved against its prevouts to get the
+signed net effect — so a send is never displayed as a receive — and
+`confirmations = tip − height + 1`, with 0 meaning pending. Block times are read
+from the 80-byte header.
+
+Two details here were confirmed empirically: `prevTxId` is **already in display
+byte order** (reversing it, the reflex from Bitcoin work, makes every one of your
+own spends look like a foreign input), and amounts are `BigInt` photons end to end.
+
+### Explorer links
+
+Tapping a row opens `https://radiantexplorer.com/tx/<txid>` in the system browser.
+The URL is built only from a well-formed 64-hex txid, and the native `OpenUrl`
+plugin accepts **https on an allowlist of explorer hosts only** — a wallet should
+not be a general-purpose intent launcher.
+
+A native plugin, rather than a plain link, because the WebView hardening described
+in [Security](#security) disables scripted popups: `window.open()` would silently
+do nothing, a bug that only shows up on a phone.
+
+### USD price
+
+The balance card shows an approximate USD value, with a *Show USD value* toggle
+and the current unit price in Settings → Display.
+
+- Source: CoinGecko `ids=radiant`, falling back to CoinPaprika. They disagree by
+  ~15% because they aggregate different venues, which is exactly why the UI names
+  the source instead of implying one authoritative number.
+- Cached for 2 minutes; if both providers fail the cached value is shown marked
+  `cached`. `fetchRxdUsd()` returns null rather than throwing — a price API being
+  down must never affect the wallet.
+- RXD trades in fractions of a cent, so anything below 1¢ reads `< $0.01` rather
+  than a meaningless `$0.003`.
+- **Privacy:** this is the only request to a third party that is not an Electrum
+  server. It is opt-out, sends nothing but the coin id, and is disclosed in
+  `docs/privacy-policy.html`.
+
+## Security
+
+### What protects the seed
+
+- **At rest.** AES-256-GCM under PBKDF2-SHA256 (600,000 iterations, 16-byte salt,
+  12-byte IV); only ciphertext is stored. Minimum passphrase 12 characters with a
+  trivially-weak check. Vaults written under the older 310k policy still open and
+  are transparently re-encrypted on the next unlock, and stored KDF parameters are
+  range-checked rather than trusted.
+- **Biometric unlock.** The whole secret blob is *also* encrypted by an
+  AES-256-GCM key in the **AndroidKeyStore**, created with
+  `setUserAuthenticationRequired(true)`,
+  `setInvalidatedByBiometricEnrollment(true)` and `AUTH_BIOMETRIC_STRONG` only. The
+  cipher is bound to the prompt through `CryptoObject`, so authenticating and
+  decrypting cannot be separated; key material never leaves the TEE, and enrolling
+  a new fingerprint invalidates it. The passphrase vault stays the source of truth
+  — biometrics are an additional door, never the only one.
+- **Leaving the app.** Auto-lock drops the entire session — socket closed, derived
+  wallet and UTXOs released — so returning always lands on Unlock. Default is
+  *immediately*; Settings allows a 15 s to 15 min grace period. Detection is
+  redundant (`visibilitychange`, `pagehide`/`pageshow`, and a frozen-timer
+  heartbeat) because a lock that silently stops working is a security failure. A
+  lock falling due while a biometric prompt is open is deferred, never dropped.
+- **Every payment.** Re-authenticated with the passphrase or a biometric, and the
+  secret returned must belong to the wallet on screen, so a stale enrolment or a
+  swapped vault cannot sign for a different seed.
+- **Screen capture.** `FLAG_SECURE` is raised app-wide by default, with a Settings
+  opt-out for QR sharing; the seed screens are always protected by a ref-counted
+  holder.
+- **WebView.** Remote debugging off in the config *and* in `MainActivity` (the
+  config alone is not sufficient — Capacitor applies it only at bridge creation);
+  geolocation, scripted popups, multiple windows and form-data retention disabled;
+  `allowBackup=false`, `usesCleartextTraffic=false`.
+
+### Static-analysis remediation
+
+| Finding | Status |
+| --- | --- |
+| HIGH-1 debuggable + WebView debugging | **Fixed** — debugging forced off natively; release builds are `debuggable=false` |
+| HIGH-2 debug signing key | **Fixed** — release keystore, R8 + resource shrinking, APK Signature v2 + v3 (`CN=Birnie`). No keystore ⇒ an *unsigned* APK, never a debug-signed one |
+| MEDIUM-1 weak passphrase / KDF | **Fixed** — 12-char minimum, PBKDF2 600k, vault schema v2 with transparent upgrade |
+| MEDIUM-2 untrusted Electrum server | **Partially** — bare-IP endpoint removed, `verified` gates connect order, cross-operator tip check. **Not SPV** |
+| LOW/MED-3 seed resident in heap | **Improved** — per-payment re-auth, session dropped on backgrounding |
+| L1 FLAG_SECURE scope | **Fixed** — app-wide by default |
+| L2 WebView surface | **Fixed** |
+| L3 dev metadata in bundle | **Mitigated** — R8 strips the bytecode; the vendored `package.json` still ships (no secrets) |
+| L4 trusted KDF parameters | **Fixed** — range-checked and versioned |
+
+### The honest gap: there is no SPV
+
+Verifying a server's answers means fetching block headers, checking proof-of-work
+(Radiant uses SHA-512/256d) and verifying each transaction's merkle branch to a
+header. That is substantial, consensus-sensitive work and it is **not
+implemented**. What exists is a cheap disagreement check: `crossCheckTip` compares
+the chain tip against another operator, bounded to 2 peers × 5 s — and when every
+independent operator was offline, that check reported "skipped".
+
+So the app still trusts a single Electrum server for balances, history and
+confirmation counts. It cannot steal funds — it never sees a key — but it can
+deceive about state. Treat it as a semi-trusted view of the chain.
+
+### Limitations
+
+1. **Broadcast is unproven with real funds** — see [Status](#status).
+2. **No SPV**, as above.
+3. **Keys live in JS memory** while unlocked. The same class of exposure as any
+   JavaScript wallet.
+4. **Screenshot blocking is framework-enforced only**: it defeats Android captures
+   and MediaProjection recordings and blanks the Recents thumbnail, but not a rooted
+   device or someone photographing the screen.
+5. **Change consolidates** to the first unused change-chain address rather than a
+   fresh one per transaction. It is watched, so funds never strand, but it is weaker
+   privacy.
+6. **Gap limit 20** (`GAP_LIMIT` in `src/lib/wallet.ts`), with a hard cap of 200.
+7. **History is capped** at the 25 most recent transactions, each costing an extra
+   request per foreign input.
+8. **Not audited.** Standard primitives used carefully, but no third-party review.
+
+## Radiant specifics
+
+Checked against the live chain, Radiant Core's constants and Photonic's production
+config. Getting any of these wrong yields a wallet that derives the wrong addresses
+or burns tokens.
 
 | Parameter | Value |
 | --- | --- |
-| Address format | Base58 only — P2PKH `0x00` (`1…`), P2SH `0x05` (`3…`). **No SegWit/bech32** |
-| HD path | `m/44'/512'/account'/change/index` (SLIP-0044 coin type **512**) |
+| Address format | Base58 only — P2PKH `0x00` (`1…`), P2SH `0x05` (`3…`). **No SegWit, no bech32** |
+| HD path | `m/44'/512'/account'/change/index` — SLIP-0044 coin type **512** |
 | Base unit | 1 RXD = **100,000,000 photons** |
 | Signing | `SIGHASH_ALL \| FORKID` = `0x41` |
-| Chain access | ElectrumX over **WebSocket**: `electrumx.radiant4people.com:50022` |
 | Node P2P port | 7333 |
 
-### The two places a naive wallet loses money
+### Refs: where a naive wallet burns tokens
 
-**1. Ref outputs (`OP_PUSHINPUTREF`, opcodes `0xD0–0xD8`).** A UTXO holding a
-Glyph FT/NFT carries a ref *inside its output script*. It looks like ordinary
-spendable value, so a value-based coin selector will spend it as fee funding —
-and **burn the token**. Every funding path here goes through the SDK's
-`selectRxdFunding`, which screens candidates by both indexer-reported refs and a
-local opcode scan, and throws `TokenBurnGuardError` rather than risk a burn.
+A UTXO holding a Glyph FT/NFT carries an `OP_PUSHINPUTREF`-family opcode
+(`0xD0–0xD8`) *inside its output script*. It looks like ordinary spendable value, so
+a value-based coin selector will spend it as fee funding and **destroy the token**.
+Every funding path here goes through the SDK's `selectRxdFunding`, which screens
+candidates by both indexer-reported refs and a local opcode scan, and throws
+`TokenBurnGuardError` rather than risk it. Note that a ref is not a trailing
+output — a plain P2PKH payment has none.
 
-These are *not* a mandatory trailing output: a plain P2PKH payment legitimately
-has no ref output. An earlier assumption during development that they were was
-wrong, and the live build disproved it.
+### Signing order
 
-**2. Signing key order.** `buildTx` selects the signing key by **input index**
-(`privKeys[index]`), not by matching the address. Spend inputs from several
-addresses and the WIF array must stay exactly parallel to the inputs array, or
-you get valid-looking transactions with invalid signatures. `buildPayment`
-builds both in a single pass so they cannot drift, and
-`scripts/check-multisign.mjs` proves the behaviour against the real signer.
+`buildTx` selects the signing key by **input index**, not by matching the address.
+Spending inputs from several addresses therefore requires the WIF array to stay
+exactly parallel to the inputs array, or you produce valid-looking transactions with
+invalid signatures. `buildPayment` builds both in one pass so they cannot drift, and
+`scripts/check-multisign.mjs` proves it against the real signer.
 
-### Dead servers (do not reintroduce)
+### Servers
 
-The endpoints published in `@radiant-core/constants` are stale — both
-`electrum.radiant.ovh` and `electrum.radiantblockchain.org` **no longer resolve
-in DNS**, and `electrumx.radiantcore.org` accepts TCP but never completes a TLS
-handshake. `src/lib/servers.ts` uses Photonic's production list instead.
-
-**Last live probe: 2026-11-05** (`npm run probe`):
+Last live probe **2026-11-05** (`npm run probe`):
 
 | Endpoint | Status |
 | --- | --- |
@@ -91,788 +281,210 @@ handshake. `src/lib/servers.ts` uses Photonic's production list instead.
 | `electrumx2.radiant4people.com:50022` | ✅ live, 751 ms |
 | `radiant2/radiantus/radiant4.bladenet.online:50022` | ❌ timeout |
 | `radiantcore.org:50004` | ❌ timeout |
-| `electrumx-testnet.radiant4people.com:53002` | ❌ connection refused |
-| `testnet.bladenet.online:53002` | ❌ no longer resolves |
 
-So **testnet is currently unusable** — every testnet endpoint is gone.
+Only verified endpoints are tried automatically; the dead ones stay listed so they
+can be picked deliberately in Settings if they return.
 
-Dead hosts stay in `servers.ts` (flagged `verified: false`) because they may
-return and Settings lets you pick one deliberately, but `connect()` no longer
-tries them automatically:
-
-- **`autoCandidates()`** returns the user's explicit choice followed by the
-  verified endpoints only. On a network with no verified endpoint at all
-  (testnet today) it falls back to the full list rather than refusing to try.
-- **The whole sequence is budgeted**: 7 s per connection attempt, 4 s per
-  handshake, **20 s total**, and an attempt is never started if less than 3 s of
-  budget remains. Worst case went from ~70 s of silence to ~20 s, and a refused
-  connection now fails in milliseconds.
-- **The error is actionable**: "Couldn't reach a Radiant mainnet server. Your
-  connection may be down, or a firewall/VPN may be blocking it." — plus the
-  hosts tried — and if `navigator.onLine` is false it says *offline* instead of
-  blaming the servers.
-
-Verified: three blackholed hosts with a 5 s budget give up in **2008 ms**, and
-the unattempted one is reported as `skipped, out of time`. Note that a WebSocket
-error carries no reason (browsers hide DNS vs refused vs blocked), so the app
-names the likely causes rather than inventing a specific one.
-
----
+**Testnet was removed.** Every testnet endpoint is gone — `ECONNREFUSED`, or no
+longer resolving — so offering the network only produced a confusing failure. The
+wallet, and its address validation, are mainnet-only. The historical
+`electrum.radiant.ovh` and `electrum.radiantblockchain.org` hosts no longer exist in
+DNS; do not reintroduce them.
 
 ## Architecture
 
 ```
 src/
+  App.tsx           session state, routing, refresh + re-auth orchestration
   lib/
-    wallet.ts     HD discovery, balance aggregation, ref-safe payment building
-    vault.ts      AES-256-GCM + PBKDF2 encrypted seed storage
-    biometric.ts  JS bridge to the native Keystore/BiometricPrompt plugin
-    reauth.ts     step-up auth (passphrase or biometric) before spending
-    autoLock.ts   persisted auto-lock policy, validated on read
-    useAutoLock.ts  lock on leaving the app (visibility, pagehide, heartbeat)
-    screenSecurity.ts  ref-counted FLAG_SECURE toggling
-    useSecureScreen.ts React hook with automatic release on unmount
-    history.ts    confirmation-annotated transaction history
-    servers.ts    ElectrumX endpoint pool (WebSocket) + preferred server
-    money.ts      BigInt photon/RXD conversion (never float)
+    wallet.ts       connect, BIP44 scan, UTXO fetch, send build/broadcast
+    vault.ts        encrypted seed at rest (versioned KDF policy)
+    biometric.ts    JS side of the Keystore plugin
+    history.ts      transactions, net effect, confirmation counts
+    liveUpdates.ts  scripthash subscriptions, debounce, backstop poll
+    servers.ts      endpoint list, connect budgets, auto-candidates
+    price.ts        RXD/USD with cache and fallback
+    explorer.ts     txid → explorer URL (validated)
+    openUrl.ts      JS side of the OpenUrl plugin
+    reauth.ts       per-payment confirmation
+    autoLock.ts     lock policy (pure, unit-tested)
   screens/
-    Onboarding.tsx  create / restore / passphrase
-    Unlock.tsx      biometric or passphrase unlock, wipe
-    Home.tsx        balance, activity list, funds by address
+    Onboarding.tsx  create or restore, seed backup
+    Unlock.tsx      passphrase or biometric, auto-prompt on resume
+    Home.tsx        balance, activity, funds by address
     Receive.tsx     QR + address
-    Send.tsx        compose → review → confirm (biometric/passphrase) → broadcast
-    Settings.tsx    servers, auto-lock, biometric toggle, seed backup, lock, wipe
+    Send.tsx        compose → review → confirm → broadcast
+    Settings.tsx    servers, auto-lock, biometrics, display, seed, wipe
   components/
-    ActivityList.tsx  history rows with confirmation badges
-  shims/          browser replacements for Node internals (see below)
+    ActivityList.tsx  history rows, confirmation badges, explorer links
+    BrandMark.tsx     the Radiant mark, themed
+  shims/            browser replacements for Node internals
 android/app/src/main/java/org/radiant/wallet/
-  BiometricVaultPlugin.java   AndroidKeyStore + BiometricPrompt (native)
-  ScreenSecurityPlugin.java   WindowManager FLAG_SECURE (native)
-  MainActivity.java           registers both plugins before the bridge starts
+  BiometricVaultPlugin.java   AndroidKeyStore + BiometricPrompt
+  ScreenSecurityPlugin.java   WindowManager FLAG_SECURE
+  OpenUrlPlugin.java          allowlisted https → system browser
+  MainActivity.java           registers plugins, hardens the WebView
 scripts/
-  browser-path-check.ts  runtime proof: crypto path, signing, history logic
-  probe-tx-parse.mjs     pins down radiantjs input/output field semantics
-  check-multisign.mjs    multi-address signing-order proof
-  live-e2e.mjs           live ElectrumX read + offline tx build
+  browser-path-check.ts  runtime proof: crypto, signing, history, price, live updates
+  smoke-browser.mjs      loads the built bundle in headless Chrome
+  build-icons.mjs        launcher icons from the vendored mark, size-asserted
+  build-store-assets.mjs store graphics (see docs/PUBLISHING.md)
+  release.mjs            build + sign + verify + copy to dist-android/
   probe-servers.mjs      liveness probe for every endpoint
+  check-multisign.mjs    multi-address signing-order proof
+  probe-tx-parse.mjs     pins down radiantjs input/output field semantics
+  live-e2e.mjs           live ElectrumX read + offline tx build
 ```
 
 ### Why the shims exist
 
-`radiantjs` was written for Node and reaches for Node internals. Bundling it for
-a WebView is exactly where a wallet quietly breaks, so each replacement is
-deliberate:
+`radiantjs` was written for Node and reaches for Node internals. Bundling it for a
+WebView is exactly where a wallet quietly breaks, so each replacement is deliberate:
 
 | Shim | Why |
 | --- | --- |
-| `polyfills.ts` | Installs `Buffer`, `global` and a minimal `process` on `globalThis` **before** any library module evaluates. radiantjs and its deps assume a Node-style global `Buffer`; without this the WebView threw `ReferenceError: Buffer is not defined` at startup and the app was a black screen. |
+| `polyfills.ts` | Installs `Buffer`, `global` and a minimal `process` on `globalThis` **before** any library module evaluates. Without it the WebView threw `ReferenceError: Buffer is not defined` at startup and the app was a black screen. |
 | `shims/crypto.ts` | `createHash` is deliberately **absent** so radiantjs picks its pure-JS hasher. `createHmac` **is** provided (over `js-sha512`) because `lib/mnemonic/pbkdf2.js` calls it unconditionally with no fallback — without it, *creating any wallet fails*. |
-| `shims/assert.cjs` | Node's `assert` is externalized to an empty module, so `assert(…)` throws "not a function" — during HD key building and **transaction serialisation**. Must be `.cjs` so `module.exports` is the callable. |
+| `shims/assert.cjs` | Node's `assert` is externalized to an empty module, so `assert(…)` throws "not a function" during HD key building and **transaction serialisation**. Must be `.cjs` so `module.exports` is the callable. |
 | `shims/ws.ts` | The SDK imports `ws` only as a Node fallback; the WebView always uses the global `WebSocket`. |
 | `process.browser` define | `lib/crypto/random.js` branches on it to choose Web Crypto over `crypto.randomBytes`. Without it the CSPRNG path is dead. |
 
 ### The bug that only a real browser could catch
 
-The first APK installed as a **black screen**. Cause: a bare `Buffer` reference
-in the bundle, which is fine in Node (Node defines `Buffer` globally) and fatal
-in a WebView. The entire Node-based test suite passed while the app was
-completely dead.
-
-Three things came out of that:
-
-1. `src/polyfills.ts`, imported first in `main.tsx` so the globals exist before
-   any library module body runs.
-2. `index.html` now has a **startup watchdog**: if the bundle throws or never
-   mounts, the real error (message, stack, WebView UA) is rendered on screen
-   instead of a silent black page. A wallet should fail loudly.
-3. `npm run check:smoke` — serves the built bundle and loads it in headless
-   Chrome, asserting the app actually mounts and no uncaught error occurred. It
-   is now a CI gate, and it is verified to *fail* on the broken bundle. The APK's
-   own packaged assets were smoke-tested the same way (`SMOKE_DIST=<dir>`).
-
-None of this was guessed: `npm run check:browser` builds the app's real module
-graph and asserts a known BIP39 test-vector address, a freshly generated
-mnemonic, a signed transaction (sighash `0x41`, correct pubkey, sane fee), and
-the history engine's direction/confirmation/fee maths against synthetic
-transactions.
-
----
-
-## Quick start (browser dev)
-
-```bash
-npm install
-npm run dev          # http://localhost:5173
-```
-
-The app runs in a normal browser, so you can develop the whole UI without an
-emulator. Web Crypto and WebSocket both work over `localhost`.
-
-## Build the APK
-
-**Option A — cloud build (no Android Studio needed).**
-`.github/workflows/android.yml` builds a debug APK on every push to `main` (and
-on manual dispatch), running `npm ci → npm run build → npm run check:browser →
-npx cap sync android → ./gradlew assembleDebug`. The APK is uploaded as the
-`rxd-wallet-debug-apk` artifact.
-
-**Option B — local build.**
-
-```bash
-npm install
-npm run build
-npx cap sync android
-cd android && ./gradlew assembleDebug
-# → android/app/build/outputs/apk/debug/app-debug.apk
-```
-
-Verified working toolchain:
-
-- **JDK 21.** Gradle 8.14.3 (the wrapper version) does *not* accept the JDK 25
-  that ships inside Android Studio 2026.2, so `JAVA_HOME` must point at a JDK 21.
-  AGP 8.13 + Gradle 8.14.3 + JDK 21 is a known-good combination.
-- **Android SDK** with `platforms;android-36`; AGP pulls its own
-  `build-tools;35.0.0` automatically. Point Gradle at it via
-  `android/local.properties` (`sdk.dir=C:/Android/Sdk`), which is gitignored.
-
-`minSdkVersion` is 26, `targetSdkVersion` is 36.
-
-## Installing on your own phone (sideload)
-
-Install the **signed release APK**, not the debug one: it is `debuggable=false`,
-so `adb run-as` and JDWP cannot reach the app's private data (your encrypted
-vault) over USB.
-
-```powershell
-cd android
-.\gradlew.bat assembleRelease
-# → android/app/build/outputs/apk/release/app-release.apk
-```
-
-Then either install over USB:
-
-```powershell
-C:\Android\Sdk\platform-tools\adb.exe install -r `
-  "C:\Users\Sgt Birnie\Documents\Projects\rxd-wallet\android\app\build\outputs\apk\release\app-release.apk"
-```
-
-…or copy the `.apk` to the phone (USB, cloud, email) and tap it, allowing
-"install unknown apps" for whichever app opens it. Requires Android 8.0+
-(minSdk 26). Play Protect may show an "unknown developer" prompt — expected for
-anything not distributed through Play.
-
-### Updating it later — read this
-
-Android identifies an app by **package name + signing certificate**:
-
-| Situation | Result |
-| --- | --- |
-| Same keystore, higher `versionCode` | Updates in place; wallet data survives |
-| Different/new keystore | Must uninstall first → **local vault is erased** |
-| Reinstalling after uninstall | Vault erased; restore from your 12 words |
-
-So back up **both** `android/rxd-release.jks` and `android/keystore.properties`
-together, somewhere safe and offline. Those two files are what let you ship an
-update without wiping your own wallet. They are gitignored and must never be
-committed.
-
-Your real backup is the recovery phrase, not the APK.
+The first APK installed as a **black screen**: a bare `Buffer` reference that is
+harmless in Node and fatal in a WebView. The whole Node-based suite passed while the
+app was dead. Three things came out of it — `src/polyfills.ts` imported first in
+`main.tsx`; a **startup watchdog** in `index.html` that renders the real error,
+stack and WebView UA on screen instead of a silent black page; and
+`npm run check:smoke`, which serves the built bundle to headless Chrome and asserts
+it actually mounts. The smoke test is a CI gate and was verified to *fail* on the
+broken bundle, and the APK's own packaged assets were tested the same way via
+`SMOKE_DIST=<dir>`.
 
 ## Testing
 
 ```bash
-npm run check:browser   # offline: crypto path, derivation, signing (fast, CI-safe)
-npm run check:smoke     # loads the REAL built bundle in headless Chrome
-npm run check:live      # live ElectrumX read + offline tx build (network required)
-npm run probe           # which endpoints answer a handshake right now
-node scripts/check-multisign.mjs   # proves input-index ↔ key pairing
-
-cd android && ./gradlew assembleDebug   # native compile + packaging gate
+npm run typecheck       # tsc --noEmit
+npm run build           # bundle
+npm run check:browser   # crypto, signing, history, price, live updates (Node graph)
+npm run check:smoke     # load the built bundle in headless Chrome
+npm run probe           # live liveness of every Electrum endpoint
 ```
 
-`check:smoke` is the one that decides whether the app actually runs: it serves
-`dist/` and loads it in headless Chrome, failing if `#root` never renders or an
-uncaught error occurs. Everything else can pass while the app is a black screen —
-that is exactly what happened once. To smoke-test the assets packaged inside an
-APK, point it at extracted assets:
-
-```bash
-SMOKE_DIST=C:/Android/apk-assets npm run check:smoke
-```
-
-`check:browser` is the important one: it builds the real module graph with the
-production aliases, so it catches the class of bug where the app builds fine but
-fails at runtime inside the WebView.
-
-To also exercise the app's own `connect()` failover and `scanWallet()` discovery
-against mainnet, append the `--live` flag:
-
-```bash
-npx vite build -c vite.test.config.ts && node dist-test/browser-path-check.js --live
-```
-
-Last live run: connected in 1.6 s, tip height 478552, 40 addresses discovered.
-
----
-
-## Security report remediation
-
-Remediation of the static-analysis report on the debug APK. Statuses describe
-what is actually verified, not what was intended.
-
-| Finding | Status | What changed |
-| --- | --- | --- |
-| **HIGH-1** debuggable + WebView remote debugging | **Fixed** | `webContentsDebuggingEnabled: false` in the Capacitor config (verified present in the packaged `capacitor.config.json`), plus `WebView.setWebContentsDebuggingEnabled(false)` in `MainActivity`. Release builds are `debuggable=false` (absent from the manifest). |
-| **HIGH-2** debug signing key, v2-only | **Fixed** | Release `signingConfig` read from `android/keystore.properties` (gitignored), R8 minification and resource shrinking. Signed with **APK Signature Scheme v2 + v3** (verified with `apksigner`; v1 is unnecessary at minSdk 26), signer `CN=Birnie`. With no keystore present, `assembleRelease` produces an **unsigned** APK instead of a debug-signed one. |
-| **MEDIUM-1** 6-char passphrase, PBKDF2 @ 310k | **Fixed** | 12-character minimum + trivial-pattern blocklist (`checkPassphrase`), PBKDF2-SHA256 raised to **600,000**, vault schema `v2`. Existing vaults still open and are **transparently re-encrypted** at the new cost on the next unlock. |
-| **MEDIUM-2** single untrusted Electrum server | **Partially fixed** | Bare-IP endpoint **removed** (an IP can't match a TLS identity); `verified` now gates connect order instead of being a label; endpoints tagged by `operator`; a cross-operator tip cross-check (`crossCheckTip`, bounded to 2 peers × 5s) warns in the UI on disagreement. **This is not SPV** — still no merkle-proof or proof-of-work verification. |
-| **LOW/MED-3** mnemonic resident in heap | **Improved** | Sending now requires re-authentication even in an unlocked session — the passphrase, or a biometric unwrapped by the Keystore key (`src/lib/reauth.ts`), and the secret must match the wallet on screen. The session is also dropped as soon as the app leaves the foreground (`src/lib/useAutoLock.ts`), so the mnemonic does not sit in the heap behind the app switcher. JS still cannot zero memory. |
-| **L1** FLAG_SECURE scoped | **Fixed** | Screenshot/recording blocking is now **app-wide by default**, with an explicit Settings opt-out for QR sharing; seed screens stay blocked either way (ref-counted). |
-| **L2** WebView surface | **Fixed** | Geolocation, scripted popups, multiple windows and form-data retention disabled in `MainActivity.hardenWebView()`. |
-| **L3** dev metadata in bundle | **Mitigated** | R8 strips the release bytecode; the vendored `radiantjs` `package.json` still ships inside the web bundle (informational only, no secrets). |
-| **L4** trusted stored KDF params | **Fixed** | Stored iteration count is range-checked (100k–5M) and rejected outside it; KDF parameters are versioned by `v`. |
-
-### The honest gap: MEDIUM-2 is not really solved
-
-Verifying a server's answers requires SPV — fetch block headers, check
-proof-of-work (Radiant uses SHA-512/256d), and verify each transaction's merkle
-branch to the header. That is a substantial, consensus-sensitive feature and it is
-**not implemented**. What exists is a cheap disagreement check — and in testing
-every independent operator was offline:
-
-```
-OK   scanWallet() completed gap-limit discovery  40 addresses, 0 utxos
-     (no independent server reachable — cross-check skipped)
-```
-
-So today the app still trusts one Electrum server for balances, history and
-confirmation counts. The mitigation is bounded and produces no false alarms, and
-it will start working the moment a second operator is reachable. Treat the server
-as a semi-trusted view of the chain.
-
-### Producing a real release build
-
-```bash
-keytool -genkeypair -v -keystore android/rxd-release.jks \
-        -alias rxd -keyalg RSA -keysize 4096 -validity 10000
-
-cat > android/keystore.properties <<'EOF'
-storeFile=../rxd-release.jks
-storePassword=...
-keyAlias=rxd
-keyPassword=...
-EOF
-
-cd android && ./gradlew assembleRelease   # → app-release.apk (signed, v2+v3)
-```
-
-Verified on the unsigned release build: manifest has **no** `debuggable`,
-`allowBackup="false"`, `usesCleartextTraffic="false"`, the web bundle is present,
-and — because `-keep class org.radiant.wallet.**` is in `proguard-rules.pro` — R8
-**kept both plugins and all their `@PluginMethod` entry points**, so biometric
-unlock and FLAG_SECURE survive minification instead of silently disappearing.
-
-## Security model
-
-**What is protected.** The mnemonic is encrypted with AES-256-GCM using a key
-stretched from your passphrase via PBKDF2-SHA256 (600,000 iterations, 16-byte
-random salt, 12-byte random IV, per-vault). Only ciphertext is stored; the
-plaintext exists in memory solely while unlocked. The GCM tag means a wrong
-passphrase or tampered vault fails cleanly rather than producing a garbage seed.
-
-**Device hardening.** `android:allowBackup="false"` (so `adb backup` cannot
-exfiltrate the vault), `usesCleartextTraffic="false"`, and no remote content is
-ever loaded into the WebView.
-
-**Known limitations — read these:**
-
-1. **The native plugins compile, but have not been run on a device.** The APK
-   builds cleanly and both `BiometricVaultPlugin` and `ScreenSecurityPlugin` are
-   present in the APK's DEX, but a biometric prompt and `FLAG_SECURE` need real
-   hardware with an enrolled fingerprint to confirm end-to-end. Everything fails
-   safe — biometric errors fall back to the passphrase.
-2. **Keys are held in JS memory** while unlocked (WebView), not in native
-   storage. Same class of exposure as any JavaScript wallet.
-3. **Screenshot blocking is framework-enforced only.** `FLAG_SECURE` is raised
-   app-wide by default (opt-out in Settings for QR sharing), and always on the
-   recovery-phrase surfaces. It defeats Android screenshots and MediaProjection
-   recordings and blanks the Recents thumbnail, but it cannot stop a rooted
-   device or someone photographing the phone with another camera.
-4. **Change goes to one address** (the first unused change-chain address) rather
-   than a fresh change address per transaction. It is watched by the scanner, so
-   funds are never stranded, but it is weaker privacy than ideal.
-5. **Address gap is fixed at 20.** If history is spread further, raise
-   `GAP_LIMIT` in `src/lib/wallet.ts`; the hard cap is 200.
-6. **History is capped at the 25 most recent transactions**, and each one costs
-   an extra request per foreign input. A wallet with very large history will be
-   slow to describe; the balance is unaffected.
-7. **The vault is not independently audited.** Standard primitives, careful
-   usage, but no third-party review.
-8. **Auto-lock depends on the WebView telling the app it is hidden.** Android
-   WebView does report that when the activity is paused, and the heartbeat
-   backstop locks the wallet after ≥10 s away even if the event never arrived —
-   but no in-app lock can protect a phone that is captured while the screen is
-   still on and unlocked. That is the device screen lock's job.
-
-## Biometric unlock — how it works
-
-Enabling it encrypts the *entire* wallet secret blob (mnemonic + network +
-server preferences, as JSON) with an AES-256-GCM key created in the
-**AndroidKeyStore** with:
-
-```java
-setUserAuthenticationRequired(true)
-setInvalidatedByBiometricEnrollment(true)   // a newly enrolled finger voids the key
-setUserAuthenticationParameters(0, AUTH_BIOMETRIC_STRONG)
-```
-
-Key material never leaves the TEE. The cipher is bound to the prompt via
-`BiometricPrompt.CryptoObject`, so authenticating and decrypting cannot be
-separated, and only `BIOMETRIC_STRONG` (not device credential) is accepted.
-
-The passphrase vault stays the source of truth: biometric unlock is an
-additional door, never the only one. Deleting the wallet also deletes the
-Keystore key, and a wrong/failed biometric leaves you on the unlock screen with
-the passphrase available.
-
-## Auto-lock and send-time confirmation
-
-Two checks sit between "the wallet is open" and "funds move".
-
-**Auto-lock** (`src/lib/useAutoLock.ts`). The wallet locks itself as soon as the
-app leaves the foreground. Locking drops the whole `Session` — the Electrum
-socket is closed, the derived wallet and the scanned UTXOs are released, and the
-screen resets — so coming back always lands on the Unlock screen, which offers
-the biometric prompt (auto-raised when enrolled) or the passphrase. Settings →
-Security picks the policy: **Immediately** (the default), or a 15 s / 30 s /
-1 min / 5 min / 15 min grace period for people who switch apps constantly. The
-stored value is validated on read, so a tampered localStorage entry cannot turn
-locking off.
-
-Detection is deliberately redundant, because a lock that silently stops working
-is a security failure rather than a cosmetic one:
-
-| Signal | What it catches |
-| --- | --- |
-| `visibilitychange` | The Android WebView reports "hidden" when the activity is paused — the normal path. |
-| `pagehide` / `pageshow` | Navigations and bfcache restores that skip the visibility event. |
-| 1 s heartbeat | A WebView that is not being rendered stops running timers, so a ≥10 s gap in the ticks is the same evidence as a trip to the background. The floor keeps a slow PBKDF2 run from looking like one. |
-
-A biometric prompt that is open is never torn down: the lock is deferred until
-the prompt closes, so approving a payment cannot cancel the very payment being
-approved.
-
-**Send-time confirmation** (`src/lib/reauth.ts`). Every payment is authorised
-again immediately before signing, with **either** the passphrase or a biometric
-— an unlocked session in the JS heap is not sufficient on its own. Both paths
-also require that the secret returned belongs to the wallet currently on screen,
-so a stale biometric enrolment (or a vault replaced underneath the session)
-cannot sign for a different seed. This is the reason the send sheet has no
-"remember me": re-authentication is per payment, not per session.
-
-## Design system
-
-The UI deliberately mirrors [radiantblockchain.org](https://radiantblockchain.org).
-Tokens were lifted from their stylesheet (`assets/css/style.css`) rather than
-eyeballed, and then verified by sampling rendered pixels:
-
-| Token | Value | Source |
-| --- | --- | --- |
-| Canvas | `hsl(0,0%,0%)` `#000000` | `--color-bg` |
-| Surfaces | `hsl(204,15%,6%)`, `hsl(203,18%,9%)`, `hsl(203,18%,17%)` | `--color-bg-darker/-dark/-light` |
-| Brand / primary | `hsl(195,100%,44%)` **`#00A8E0`** | `--color-primary`, `--color-accent` |
-| Button fill | `hsl(240,1%,10%)` | `--color-contrast-lowest` |
-| Text ladder | `hsl(240,100%,99%)` → `hsl(223,8%,82%)` → `hsl(213,5%,56%)` → `hsl(208,6%,40%)` | `--color-contrast-higher/high/medium/low` |
-| Typeface | **Inter Variable** (bundled via `@fontsource-variable/inter`) | Google Fonts import on the site |
-| Radius | 4px base (`--radius-sm`), 6px cards, 10px sheets | `--radius-md: 0.25em` |
-| Borders | hairline `hsl(208,12%,24%)`, flat surfaces, no glow | `--color-contrast-lower` |
-
-Light mode is supported via `prefers-color-scheme` using the site's own light
-token set, because their theme control defaults to *System*. Text sitting **on**
-cyan stays near-black in both themes — white on `#00A8E0` is unreadable.
-
-Verification (pixel sampling of a headless-Chrome render, quantised):
-
-```
-dark  : #000000 80.2%   #00a8e0 5.2%   #181818 4.7%    (theme=dark)
-light : #ffffff 80.2%   #00a8e0 5.3%   #e0e0e0 4.8%    (theme=light)
-site  : #000000 66.2%   #080810 8.2%   #101018 6.8%    (reference)
-```
-
-## App icon
-
-Built from the official Radiant mark — `assets/brand/radiant-mark.png`, vendored
-from [Radiant-Core/Radiant-Logo](https://github.com/Radiant-Core/Radiant-Logo)
-(`Radiant-Logo-R-Transparent.png`: brand cyan + cream, transparent).
-
-That artwork is licensed **Apache-2.0** (upstream:
-[RadiantBlockchain-Community/Radiant-logo](https://github.com/RadiantBlockchain-Community/Radiant-logo)).
-The Radiant name and logo are the Radiant project's brand assets: they are used
-here to identify which network this wallet talks to, not to imply that this app is
-official or endorsed. If you fork this and ship it, consider replacing the mark
-with your own unless you have permission.
-
-`npm run icons` regenerates every density:
-
-- **Adaptive foreground** (`mipmap-*/ic_launcher_foreground.png`) — 108dp canvas,
-  transparent, mark at **56%** of the canvas so it stays inside Android's 66%
-  safe zone and survives circular/squircle masks.
-- **Legacy icons** (`ic_launcher.png`, `ic_launcher_round.png`) — 48–192dp, mark
-  at 70%/60%, black background, round variant circular-masked.
-- **Adaptive background** — solid `#000000`
-  (`values/ic_launcher_background.xml`), replacing the template's white.
-
-Compositing is done in Node with `pngjs` (crop to the mark's ink → area-average
-downscale → centre), not a browser. Every output's ink bounding box is then
-measured and the script **fails if it is outside tolerance**, so the sizing is
-verified rather than assumed:
-
-```
-OK   mipmap-xxxhdpi/ic_launcher.png              192px  ink 0.698 (target 0.7)
-OK   mipmap-xxxhdpi/ic_launcher_foreground.png   432px  ink 0.56  (target 0.56)
-```
-
-Themed (monochrome) icons for Android 13+ are intentionally not provided yet;
-those devices fall back to the normal full-colour icon.
-
-## Screen privacy (anti-screen-recording)
-
-`ScreenSecurityPlugin.java` toggles `WindowManager.LayoutParams.FLAG_SECURE` on
-the app window, which makes Android refuse screenshots, exclude the window from
-MediaProjection screen recordings and casting, and blank the app in the Recents
-thumbnail.
-
-It is **selective**, not app-wide — the flag is raised only while a recovery
-phrase is on screen:
-
-- creating a wallet (the 12-word backup) and entering a phrase to restore,
-- the "Show recovery phrase" sheet in Settings (including its passphrase field).
-
-So you can still screenshot a receive address or QR code, which is a normal
-thing to want.
-
-Two details that make this actually hold:
-
-1. **Raised before paint.** The handlers `await hold()` *before* the seed is set
-   in state. Doing it in a `useEffect` would run after paint and leave a
-   capturable frame.
-2. **Reference counted.** `FLAG_SECURE` is window-global, so a naive on/off from
-   two components would let the second release clear the flag while the first
-   still shows a seed. `src/lib/screenSecurity.ts` only clears it when the last
-   holder releases, and each component holds at most one reference that is
-   auto-released on unmount. The safe failure direction (stuck secure) is
-   preferred over the dangerous one.
-
-## USD price
-
-The balance card shows an approximate USD value; Settings → **Display** has a
-*Show USD value* toggle and states the current unit price and its source.
-
-- **Source:** CoinGecko `ids=radiant` (verified — `/search?query=radiant` returns
-  id `radiant`, symbol RXD), with CoinPaprika (`rxd-radiant`) as a fallback.
-- **Cached** for 2 minutes in `localStorage`. If both providers fail, the cached
-  value is shown marked `cached`. The wallet never breaks because a price API is
-  down: `fetchRxdUsd()` returns null instead of throwing.
-- **RXD is worth fractions of a cent**, so a normal personal balance is worth
-  cents. Anything under 1¢ renders as `< $0.01`, not a meaningless `$0.003`.
-- **Privacy:** this is the only request to a third party that isn't an Electrum
-  server. It reveals your IP address and that you use a Radiant wallet, so it is
-  opt-out, sends nothing but the coin id, and is disclosed in
-  `docs/privacy-policy.html`.
-
-The two providers disagreed by ~15% when this was written (`$0.0000286` vs
-`$0.0000335`) because they aggregate different venues — which is exactly why the
-UI names the source instead of implying a single authoritative number.
-
-### Live balance updates
-
-The balance keeps itself current, and only one part of that is a timer:
-
-1. **Electrum push (primary).** After each scan the app subscribes
-   (`blockchain.scripthash.subscribe`) to every address with history plus the
-   next 3 unused ones — so the next payment to a fresh address is caught too. The
-   server notifies the instant an address's output set changes.
-2. **Debounce + settle window.** One payment typically touches several addresses
-   (payment + change); a burst produces a single re-scan. Notifications in the
-   first second after subscribing are ignored, because some servers echo the
-   current status back — treating that as news would create a
-   scan→resubscribe→scan loop.
-3. **Backstop poll.** A 60 s scan, only while the app is visible, in case a
-   server doesn't push or a socket dies silently.
-4. **Manual.** The Refresh button, and automatically after sending.
-
-Background scans are **silent** — no "Refreshing…" overlay — so an incoming
-payment never interrupts what you were doing. Subscriptions are torn down on
-lock, on server switch and on unmount, before the socket closes.
-
-Verified live: `OK server accepts push subscriptions (status null)` — Radiant's
-ElectrumX does implement scripthash subscriptions, so push (not the poll) is what
-normally refreshes the balance.
-
-## Transaction confirmations
-`src/lib/history.ts` builds a confirmation-annotated history using only standard
-ElectrumX calls (`blockchain.scripthash.get_history`,
-`blockchain.transaction.get`, `blockchain.block.header`). For each transaction it
-resolves prevouts to work out the signed net effect, so a send is not mistaken
-for a receive, and computes `confirmations = tip - height + 1` (0 = pending).
-Block timestamps are read directly from the 80-byte header.
-
-Non-obvious detail that is verified rather than assumed: radiantjs exposes
-`input.prevTxId` **already in display byte order**, so reversing it — the usual
-Bitcoin-fundamentalist reflex — would make every one of your own spends look like
-a foreign input. `scripts/probe-tx-parse.mjs` pins this down.
-
-
-**Never** ask anyone for your recovery phrase, and never type it into a website.
-This app only ever asks for your *passphrase*, which is local to this device.
-
----
-
-## Known issues / next steps
-
-- `radiantcore.org` (Glyph/WAVE REST API) was unreachable from the development
-  network, so Glyph-token and WAVE-name features are intentionally absent. The
-  SDK has them; wiring them up is straightforward once that host is reachable.
-- Broadcast is implemented via the standard `blockchain.transaction.broadcast`
-  call but has not been exercised against mainnet with real funds.
-- No price feed, no transaction history list (only UTXOs and per-address
-  totals), no QR *scanner* (a `BarcodeDetector` hook fits naturally in
-  `Receive.tsx`/`Send.tsx`).
-
-**Roadmap:** QR scanning → per-transaction change addresses →
-Glyph FT send/receive → fiat price.
-
----
-
-## Publishing to Google Play
-
-Everything the repo can do for you is done; the rest is account and policy work
-that only you can complete.
-
-### What is already prepared
-
-| Item | Where | Status |
-| --- | --- | --- |
-| Uploadable bundle | `./gradlew bundleRelease` → `android/app/build/outputs/bundle/release/app-release.aab` | builds locally (**1.99 MB**) |
-| App icon 512×512 | `play/store/icon-512.png` | generated (`npm run store:assets`) |
-| Feature graphic 1024×500 | `play/store/feature-graphic-1024x500.png` | generated |
-| Privacy policy | `docs/privacy-policy.html` | written — needs hosting |
-| targetSdk 36 / minSdk 26 | `android/variables.gradle` | meets Play's currency rule |
-| Non-debuggable, R8 shrinking, v2+v3 signing | `android/app/build.gradle` | verified with `apksigner` |
-
-### 1. Create an upload key (do this yourself)
-
-Play uses **Play App Signing**: the key you generate here is the *upload* key;
-Google holds the actual app-signing key. Never let anyone else generate it, and
-back it up offline.
+`check:browser` exercises the app's real module graph and asserts a known BIP39
+test-vector address, a freshly generated mnemonic, a signed transaction (sighash
+`0x41`, correct pubkey, sane fee), the history engine's direction/confirmation/fee
+arithmetic against synthetic transactions, the KDF migration path, the price
+formatter and cache, and the live-update subscription lifecycle.
+
+The important gate is `check:smoke` — it is the one that would have caught the black
+screen, and it runs in CI on a Linux runner, not just locally.
+
+All three run on every push via `.github/workflows/android.yml`, which then builds a
+debug APK and uploads it as an artifact.
+
+## Releasing
 
 ```powershell
-keytool -genkeypair -v -keystore android/rxd-release.jks -storetype PKCS12 `
-  -alias rxd -keyalg RSA -keysize 4096 -validity 10000 `
+npm version patch      # 1.0.10 → 1.0.11
+npm run release        # → dist-android/radiant-wallet-1.0.11.apk
+```
+
+`npm run release` builds the web assets, syncs Capacitor, produces a *signed*
+release APK, runs `apksigner` to verify it, and copies it to `dist-android/`. It
+refuses to hand over an unsigned or broken artifact.
+
+`package.json` is the single source of truth for the version; Gradle reads it and
+derives `versionCode` as `major*10000 + minor*100 + patch`, so it always increases
+and Android never rejects the update. The in-app About card is injected from the
+same field at build time, so it cannot drift.
+
+### Producing a signed build
+
+One-time setup, and the key must be yours:
+
+```bash
+keytool -genkeypair -v -keystore android/rxd-release.jks -storetype JKS \
+  -alias rxd-release -keyalg RSA -keysize 4096 -validity 10000 \
   -dname "CN=Birnie, O=Radiant Wallet, C=CA"
 ```
 
-Then create `android/keystore.properties` (gitignored). `storeFile` is resolved
-**relative to `android/`**, so do not add `../`:
+Then `android/keystore.properties`:
 
 ```properties
 storeFile=rxd-release.jks
 storePassword=…
-keyAlias=rxd
+keyAlias=rxd-release
 keyPassword=…
 ```
 
-If you lose the upload key you can request a reset in Play Console; the app
-signing key stays safe with Google. Keep an offline copy anyway.
-
-### 2. Build the bundle
-
-```powershell
-cd android
-.\gradlew.bat bundleRelease
-```
-
-Play requires an **AAB** for new apps — not an APK. Bump `versionCode` in
-`android/app/build.gradle` before **every** upload; it must always increase.
-
-### 3. Host the privacy policy
-
-Play will not accept the listing without a public URL.
-
-GitHub → **Settings → Pages → Source: Deploy from a branch → `main` / `/docs`**
-
-Your policy then lives at:
-
-```
-https://birnie247.github.io/radiant-wallet-android/privacy-policy.html
-```
-
-The page is accurate as written: the app collects nothing, has no backend and no
-analytics. If you later add analytics or a phone-home price feed, update it — a
-policy that contradicts what the app does is a common suspension reason.
-
-### 4. Play Console setup
-
-Create the app, then complete **App content** (all of it is mandatory):
-
-- **Privacy policy** → the URL above.
-- **Ads** → no.
-- **App access** → no accounts or logins. Give reviewers a note:
-  *"No account needed. Tap ‘Create a new wallet’, write down the 12 words, choose
-  any 12+ character passphrase. No funds are required to review the app."*
-- **Content rating** → complete the IARC questionnaire.
-- **Target audience** → 18+.
-- **Data safety** → **no data collected or shared.** Don't tick "encrypted in
-  transit": that question applies to data you collect, and you collect none.
-- **Financial features** → declare **crypto wallet / self-custody**. This is the
-  declaration that matters for a crypto app. Read Google's current Financial
-  Services policy yourself — it changes, and it varies by country.
-
-### 5. Store listing
-
-| Field | Limit | Suggested |
-| --- | --- | --- |
-| App name | 30 chars | `Radiant Wallet` |
-| Short description | 80 chars | `Non-custodial wallet for Radiant (RXD). Your keys never leave your device.` |
-| Full description | 4000 chars | Self-custody, Electrum servers, no accounts, no tracking |
-| App icon | 512×512 | `play/store/icon-512.png` |
-| Feature graphic | 1024×500 | `play/store/feature-graphic-1024x500.png` |
-| Phone screenshots | 2–8 | capture from a device (below) |
-| Contact email | — | `birnie@915mhz.ca` |
-| Category | — | Finance |
-
-Screenshots are far better captured from the real app than mocked up. With the
-phone connected over USB:
-
-```powershell
-C:\Android\Sdk\platform-tools\adb.exe exec-out screencap -p > shot-1.png
-```
-
-Take at least: onboarding, home/balance, receive (QR), send review. Play wants
-16:9 or 9:16, minimum 320 px, maximum 3840 px on the long edge.
-
-### 6. Roll out
-
-**Internal testing** first — instant, no review, and it validates the AAB and the
-signing config. Then **closed testing** (a few testers, triggers a real review),
-then **production**. A first review for a crypto app commonly takes days, and
-reviewers may come back with questions about the financial declaration — answer
-in the Console rather than re-uploading.
-
-### Honest caveats before you ship
-
-- **This is unaudited software handling real money.** Publishing does not make it
-  safe; the [Security model](#security-model) section lists exactly what is and
-  isn't verified.
-- **The Electrum trust gap is real.** Balances and confirmations come from a
-  single server with no SPV verification. Consider saying so in the store
-  description — users of a wallet deserve to know.
-- **Play does remove crypto wallets** that fail the financial declaration or
-  mislead users. Keep the listing literal about what the app does.
-
-## Keeping the app updated
-
-There is no store to auto-update from, so an update is something you run. It's
-one command:
-
-```powershell
-npm run release
-```
-
-That builds the web bundle, syncs Capacitor, builds a **signed** release APK,
-copies it to `dist-android/radiant-wallet-<version>.apk`, and verifies the
-signature with `apksigner` before telling you it's done.
-
-### Shipping a change
-
-```powershell
-# 1. edit code
-npm version patch        # 1.0.0 -> 1.0.1  (package.json is the ONLY version source)
-npm run release
-# 2. install over the top
-C:\Android\Sdk\platform-tools\adb.exe install -r `
-  "dist-android\radiant-wallet-1.0.1.apk"
-```
-
-`versionCode` is derived from `package.json` (`major*10000+minor*100+patch`), so
-it always increases — Android refuses to install a lower one.
-
-Verified end to end: installing **1.0.0 (versionCode 10000)** over
-**1.0 (versionCode 1)** left `firstInstallTime` unchanged and only moved
-`lastUpdateTime` — a true in-place update, so the encrypted vault survives.
-
-### Three rules that matter
-
-1. **Never lose `android/rxd-release.jks`** (and its `keystore.properties`). A
-   different key forces an uninstall, which erases the vault.
-2. **Bump the version every time** (`npm version patch`). 
-3. **Restore from your 12 words**, not from the APK, if anything goes wrong.
-
-### What updates itself, and what doesn't
-
-| Component | How it stays current |
-| --- | --- |
-| **Android System WebView** | Updates automatically through the Play Store. Most security fixes for a Capacitor app arrive here — you ship nothing. |
-| **Your app code** | Only when you run `npm run release`. |
-| **npm dependencies** | `npm outdated` to review, then re-run `npm run check:browser` and `npm run check:smoke` after upgrading. |
-| **Electrum servers** | Do **not** self-heal. Endpoints die (two already have). Run `npm run probe` every few months; if the verified ones stop answering, edit `src/lib/servers.ts`. |
-| **Android SDK / AGP** | Only when you choose to upgrade them; the wrapper pins Gradle. |
+`storeFile` is resolved relative to `android/`, not the repo root. Both files are
+gitignored. With no keystore present, `assembleRelease` yields an **unsigned** APK
+rather than silently falling back to a debug key.
 
 ### If a release build misbehaves
 
-Release builds are minified (R8) and WebView debugging is deliberately disabled,
-so there's no console to read. Diagnose with the debug build instead — but note
-`webContentsDebuggingEnabled` is off there too by design; to inspect it, set it
-to `true` in `capacitor.config.ts` **temporarily**, run `npx cap run android`,
-read the error in `chrome://inspect`, then set it back before shipping.
+Release builds are minified with WebView debugging off, so there is no console. Set
+`webContentsDebuggingEnabled: true` in `capacitor.config.ts` **temporarily** and
+remember `hardenWebView()` forces it off again — comment out that line too. Then
+`npx cap run android` and read the error in `chrome://inspect`. Revert both before
+shipping.
 
-## Changelog
+### Before a new release
 
-### 2026-11-04 — auto-lock on leaving the app, biometric-or-passphrase send confirmation
+- `npm run probe` — if the verified servers have died, fix `src/lib/servers.ts`.
+  This is the only part that degrades silently.
+- `npm outdated` — after any dependency bump, re-run `check:browser` and
+  `check:smoke`.
+- Install over the previous build and confirm `firstInstallTime` is unchanged, which
+  proves the wallet survived:
+  `adb shell dumpsys package org.radiant.wallet | Select-String firstInstallTime`
 
-- **Auto-lock** no longer waits 60 s. The wallet locks the moment the app leaves
-  the foreground, so coming back always lands on the Unlock screen, which raises
-  the biometric prompt (when enrolled) or asks for the passphrase. Settings →
-  Security can relax that to a 15 s / 30 s / 1 min / 5 min / 15 min grace period.
-  Detection is redundant — `visibilitychange`, `pagehide`/`pageshow`, and a
-  frozen-timer heartbeat — and a lock that falls due while a biometric prompt is
-  open is deferred, never dropped. `src/lib/useAutoLock.ts`, `src/lib/autoLock.ts`.
-- **Every send is confirmed again** with the passphrase *or* a biometric, and the
-  secret that comes back must belong to the wallet on screen — a stale biometric
-  enrolment or a replaced vault cannot sign for a different seed.
-  `src/lib/reauth.ts`, plus the "Confirm with biometrics" button in the review
-  sheet (`src/screens/Send.tsx`).
-- `npm run check:browser` gained 8 assertions covering both (auto-lock policy
-  validation, re-auth accept/reject), and a real-browser harness confirmed the
-  lock fires on hide, respects the grace period, and never fires in the
-  foreground.
-- No native/Java changes: the existing `BiometricVaultPlugin` already performs
-  per-use `AUTH_BIOMETRIC_STRONG` authentication. Existing vaults, settings and
-  server preferences are untouched.
+## Known issues and roadmap
+
+| Item | Notes |
+| --- | --- |
+| Broadcast with real funds | Prove it with a small amount before trusting it |
+| SPV / header verification | The largest remaining trust gap |
+| QR **scanning** | Display works; camera scanning does not exist yet |
+| Glyph tokens, WAVE names | Needs `radiantcore.org` endpoints, unreachable when last checked |
+| Keystore key invalidation | Survived in code, but only provable on a device that re-enrols a fingerprint |
+| Play Store | Deliberately shelved — financial apps need an organisation account. See [docs/PUBLISHING.md](docs/PUBLISHING.md) |
+
+### Design
+
+The UI mirrors [radiantblockchain.org](https://radiantblockchain.org), with tokens
+lifted from their stylesheet rather than eyeballed: pure black `#000000` canvas,
+brand cyan `#00A8E0`, Inter Variable bundled via `@fontsource-variable/inter` (so it
+renders offline in the WebView), and 4–6 px radii. Both light and dark themes follow
+`prefers-color-scheme`.
+
+The mark is the official two-tone R (cyan `#30C0F0` + cream `#F0F0C0`) vendored at
+`assets/brand/radiant-mark.png`. Because cream is invisible on white, the icon
+generator emits a single-ink variant for light mode, and `npm run icons` measures the
+ink bounding box of every output, failing if it falls outside Android's safe zone.
 
 ## Licence
 
-**This project is MIT licensed** — see [LICENSE](LICENSE). Copyright (c) 2026
-Birnie. You may use, modify, and redistribute it, including commercially,
-provided the copyright notice and permission notice are retained.
+**MIT** — see [LICENSE](LICENSE). Copyright (c) 2026 Birnie. Use, modify and
+redistribute freely, including commercially, provided the copyright and permission
+notices are retained.
 
-Two carve-outs worth knowing:
+Two carve-outs:
 
-- **`assets/brand/radiant-mark.png` and the icons generated from it are
-  Apache-2.0**, not MIT — they come from the Radiant project (see
-  [App icon](#app-icon)). Keep their attribution if you redistribute them.
+- **`assets/brand/radiant-mark.png` and icons generated from it are Apache-2.0**, not
+  MIT — they come from the Radiant project. Keep their attribution.
 - **Dependencies keep their own licences.** `@radiant-core/sdk`,
-  `@radiant-core/radiantjs`, Capacitor and React are MIT; Inter is SIL OFL 1.1;
-  the AndroidX libraries (biometric, appcompat, core) are Apache-2.0.
+  `@radiant-core/radiantjs`, Capacitor and React are MIT; Inter is SIL OFL 1.1; the
+  AndroidX libraries are Apache-2.0.
 
 ## Attribution
 
 Signing, ref-safety and Glyph logic come from
 [`@radiant-core/sdk`](https://github.com/Radiant-Core/radiant-sdk) and
-`@radiant-core/radiantjs` (both MIT). Endpoint list adapted from
+`@radiant-core/radiantjs` (both MIT). The endpoint list is adapted from
 [Photonic Wallet](https://github.com/RadiantBlockchain-Community/photonic-wallet).
-This wallet is an independent client and is not affiliated with the Radiant
-Foundation. Use at your own risk — this is unaudited software handling real
-money.
+This is an independent client, not affiliated with the Radiant Foundation.
 
+Use at your own risk — this is unaudited software handling real money.
 
