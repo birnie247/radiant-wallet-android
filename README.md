@@ -42,7 +42,7 @@ The distinction this repo keeps coming back to is **verified** versus **assumed*
 | BIP44 discovery, gap limit 20, receive + change chains | ✅ verified |
 | Balance, UTXOs and history over ElectrumX | ✅ verified against mainnet |
 | Ref-safe send with review, confirmed by passphrase or biometric | ✅ signing verified offline; passphrase path device-tested |
-| Broadcast | ⚠️ implemented, **never exercised with real funds** |
+| Broadcast | ✅ **first real mainnet send succeeded** (owner-verified) |
 | Live balance updates (server push + backstop poll) | ✅ push accepted by the live server |
 | Transaction history with confirmation counts | ✅ verified against synthetic transactions |
 | Tap a transaction to open it in a block explorer | ✅ live link returns HTTP 200 |
@@ -53,9 +53,11 @@ The distinction this repo keeps coming back to is **verified** versus **assumed*
 | Mainnet only | ✅ testnet removed — every testnet endpoint is dead |
 | QR scanning · Glyph tokens · WAVE names | ❌ not implemented |
 
-> **The one caveat that matters:** no transaction has been broadcast to mainnet
-> from this code, because that needs funds. Everything up to and including a valid
-> signature is verified. Treat the first real send as a test — start small.
+> **On broadcast:** the first funded transaction was sent with this build and
+> broadcast to mainnet successfully, which is the one thing the test suite could not
+> prove on its own (it needs money). That is real evidence from a real send — but one
+> send is not a track record, so still treat a new balance size as a test: start
+> small.
 
 ## Quick start
 
@@ -237,7 +239,9 @@ deceive about state. Treat it as a semi-trusted view of the chain.
 
 ### Limitations
 
-1. **Broadcast is unproven with real funds** — see [Status](#status).
+1. **One real send is not a track record.** Broadcast now has a genuine mainnet
+   success behind it (see [Status](#status)), but a single send proves the happy path,
+   not every path.
 2. **No SPV**, as above.
 3. **Keys live in JS memory** while unlocked. The same class of exposure as any
    JavaScript wallet.
@@ -477,7 +481,7 @@ shipping.
 
 | Item | Notes |
 | --- | --- |
-| Broadcast with real funds | Prove it with a small amount before trusting it |
+| More real sends | One mainnet send succeeded; widen that over time |
 | SPV / header verification | The largest remaining trust gap |
 | QR **scanning** | Display works; camera scanning does not exist yet |
 | Glyph tokens, WAVE names | Needs `radiantcore.org` endpoints, unreachable when last checked |
