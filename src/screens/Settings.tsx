@@ -9,6 +9,7 @@ import {
   type BiometricStatus,
 } from "../lib/biometric";
 import { formatRxd, shortId } from "../lib/money";
+import { formatUsdPrice } from "../lib/price";
 import { useSecureScreen } from "../lib/useSecureScreen";
 import { screenSecurityAvailable } from "../lib/screenSecurity";
 import type { Nav } from "../types";
@@ -266,6 +267,23 @@ export default function Settings({ nav }: { nav: Nav }) {
           )}
 
           {bioError && <div className="error">{bioError}</div>}
+        </div>
+
+        <div className="section-title">Display</div>
+        <div className="stack">
+          <button
+            className="btn"
+            onClick={() => nav.setFiatEnabled(!nav.fiatEnabled)}
+          >
+            {nav.fiatEnabled ? "Hide USD value" : "Show USD value"}
+          </button>
+          <div className="hint">
+            {nav.fiatEnabled
+              ? `Price from ${nav.price?.source ?? "a public price API"}${
+                  nav.price ? `: ${formatUsdPrice(nav.price.usd)} per RXD` : " — unavailable right now"
+                }${nav.price?.stale ? " (cached)" : ""}. Requests go to the price provider, which sees your IP address.`
+              : "Fiat values are hidden and no price requests are made."}
+          </div>
         </div>
 
         <div className="section-title">Danger zone</div>

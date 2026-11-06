@@ -4,6 +4,12 @@ import { hasVault, unlockVault, type WalletSecrets } from "./lib/vault";
 import { connect, crossCheckTip, scanWallet } from "./lib/wallet";
 import { getPreferredServer } from "./lib/servers";
 import { loadHistory, type HistoryEntry } from "./lib/history";
+import {
+  fetchRxdUsd,
+  loadFiatEnabled,
+  saveFiatEnabled,
+  type PriceResult,
+} from "./lib/price";
 import { unlockWithBiometric } from "./lib/biometric";
 import { loadAutoLockMs, saveAutoLockMs } from "./lib/autoLock";
 import { useAutoLock } from "./lib/useAutoLock";
@@ -42,6 +48,27 @@ export default function App() {
 
   /** How long the app may sit in the background before it locks itself. */
   const [autoLockMs, setAutoLockMsState] = useState<number>(loadAutoLockMs);
+
+  /** RXD/USD price for display. Null when unavailable or fiat is switched off. */
+  const [price, setPrice] = useState<PriceResult | null>(null);
+  const [fiatEnabled, setFiatEnabledState] = useState<boolean>(loadFiatEnabled);
+
+  const setFiatEnabled = useCallback((enabled: boolean) => {
+    setFiatEnabledState(enabled);
+    saveFiatEnabled(enabled);
+    // Switching it off must also stop the requests immediately.
+    if (!enabled) setPrice(null);
+    else void fetchRxdUsd().then(setPrice).catch(() => undefined);
+  }, []);
+
+  const hydratePrice = useCallback(async () => {
+    if (!fiatEnabled) {
+      setPrice(null);
+      return;
+    }
+    // Never throws: a price API being down must not affect the wallet.
+    setPrice(await fetchRxdUsd());
+  }, [fiatEnabled]);
 
   const setAutoLockMs = useCallback((ms: number) => {
     setAutoLockMsState(ms);
@@ -114,10 +141,11 @@ export default function App() {
       setSession({ secrets, wallet, client, endpoint, scan });
       setScreen("home");
       void hydrateHistory({ secrets, wallet, client, endpoint, scan });
+      void hydratePrice();
     } finally {
       setBusy("");
     }
-  }, [hydrateHistory]);
+  }, [hydrateHistory, hydratePrice]);
 
   /** Re-scan balances against the live connection. */
   const refresh = useCallback(async () => {
@@ -131,10 +159,11 @@ export default function App() {
       const next = { ...current, scan };
       setSession(next);
       void hydrateHistory(next);
+      void hydratePrice();
     } finally {
       setBusy("");
     }
-  }, [hydrateHistory]);
+  }, [hydrateHistory, hydratePrice]);
 
   /** Drop the socket and reconnect, optionally to a newly preferred server. */
   const reconnect = useCallback(async () => {
@@ -158,10 +187,11 @@ export default function App() {
       const next = { ...current, client, endpoint, scan };
       setSession(next);
       void hydrateHistory(next);
+      void hydratePrice();
     } finally {
       setBusy("");
     }
-  }, [hydrateHistory]);
+  }, [hydrateHistory, hydratePrice]);
 
   const lock = useCallback(() => {
     const current = sessionRef.current;
@@ -252,6 +282,9 @@ export default function App() {
     setAllowScreenshots,
     autoLockMs,
     setAutoLockMs,
+    price,
+    fiatEnabled,
+    setFiatEnabled,
   };
 
   return (

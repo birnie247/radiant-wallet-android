@@ -2,6 +2,7 @@ import type { ElectrumClient, HDWallet } from "@radiant-core/sdk";
 import type { WalletSecrets } from "./lib/vault";
 import type { ScanResult } from "./lib/wallet";
 import type { HistoryEntry } from "./lib/history";
+import type { PriceResult } from "./lib/price";
 
 /** An unlocked, connected wallet. Lives only in memory. */
 export interface Session {
@@ -42,4 +43,9 @@ export interface Nav {
    */
   autoLockMs: number;
   setAutoLockMs: (ms: number) => void;
+  /** RXD/USD price, or null when unavailable or fiat display is off. */
+  price: PriceResult | null;
+  /** Whether fiat values are shown (opt-out; see price.ts). */
+  fiatEnabled: boolean;
+  setFiatEnabled: (enabled: boolean) => void;
 }

@@ -1,4 +1,5 @@
 import { formatRxd, shortId } from "../lib/money";
+import { formatUsdBalance } from "../lib/price";
 import { MAX_TIP_DRIFT } from "../lib/wallet";
 import ActivityList from "../components/ActivityList";
 import BrandMark from "../components/BrandMark";
@@ -44,6 +45,14 @@ export default function Home({ nav }: { nav: Nav }) {
             {formatRxd(scan.total, 8).split(".")[0]}
             <span className="unit">RXD</span>
           </div>
+          {nav.fiatEnabled && nav.price && (
+            <div className="balance-fiat">
+              ≈ {formatUsdBalance(scan.total, nav.price.usd)}
+              {nav.price.stale && (
+                <span className="balance-fiat-note">cached</span>
+              )}
+            </div>
+          )}
           <div className="balance-sub">
             {formatRxd(scan.total, 8).includes(".") && (
               <span>{formatRxd(scan.total, 8)}</span>

@@ -148,6 +148,15 @@ if (process.argv.includes("--live")) {
     `${scan.addresses.length} addresses, ${scan.utxos.length} utxos`,
   );
 
+  // The USD price path, against the real public API (not a stub).
+  const { fetchRxdUsd, formatUsdPrice } = await import("../src/lib/price");
+  const livePrice = await fetchRxdUsd({ force: true });
+  check(
+    "live: RXD/USD price fetched from the public API",
+    (livePrice?.usd ?? 0) > 0,
+    `${livePrice?.source} ${formatUsdPrice(livePrice?.usd ?? 0)} per RXD`,
+  );
+
   // MEDIUM-2: independent tip cross-check.
   const primaryTip = await client.request<{ height: number }>(
     "blockchain.headers.subscribe",
@@ -690,6 +699,75 @@ if (process.argv.includes("--live")) {
     "waits until biometric is ready",
     !bio.shouldAutoPromptBiometric({ ...base, ready: false }),
   );
+}
+
+// 12. USD price: formatting, caching and graceful failure.
+{
+  const price = await import("../src/lib/price");
+
+  // RXD trades in fractions of a cent, so small amounts must not look like
+  // rounding noise.
+  check(
+    "fiat below a cent reads '< $0.01'",
+    price.formatUsdBalance(100_000_000n, 0.0000286) === "< $0.01",
+    price.formatUsdBalance(100_000_000n, 0.0000286),
+  );
+  check("zero balance reads '$0.00'", price.formatUsdBalance(0n, 0.0000286) === "$0.00");
+  check(
+    "ordinary amount reads as dollars",
+    price.formatUsdBalance(10_000_000_000n, 2.5) === "$250.00",
+    price.formatUsdBalance(10_000_000_000n, 2.5),
+  );
+  check("unit price keeps significant digits", price.formatUsdPrice(0.00002862) === "$0.0000286", price.formatUsdPrice(0.00002862));
+  check("unit price for a 'normal' coin", price.formatUsdPrice(12.5) === "$12.50");
+  check("no price, no string", price.formatUsdPrice(0) === "");
+
+  // Cache + fallback, with a stubbed fetch and storage.
+  const store = new Map<string, string>();
+  (globalThis as unknown as { localStorage: unknown }).localStorage = {
+    getItem: (k: string) => store.get(k) ?? null,
+    setItem: (k: string, v: string) => void store.set(k, String(v)),
+    removeItem: (k: string) => void store.delete(k),
+  };
+
+  let calls = 0;
+  const goodFetch = (async (url: string) => {
+    calls++;
+    return {
+      ok: true,
+      json: async () =>
+        String(url).includes("coingecko")
+          ? { radiant: { usd: 0.00003 } }
+          : { quotes: { USD: { price: 0.00004 } } },
+    };
+  }) as unknown as typeof fetch;
+
+  const first = await price.fetchRxdUsd({ fetchImpl: goodFetch, now: 1_000 });
+  check(
+    "fetches a price and names the source",
+    first?.usd === 0.00003 && first?.source === "coingecko" && !first?.stale,
+    `${first?.source} ${first?.usd}`,
+  );
+
+  const cached = await price.fetchRxdUsd({ fetchImpl: goodFetch, now: 1_000 + 30_000 });
+  check("reuses the cache inside the TTL", calls === 1 && cached?.usd === 0.00003, `${calls} request(s)`);
+
+  await price.fetchRxdUsd({ fetchImpl: goodFetch, now: 1_000 + 10 * 60_000 });
+  check("refetches once the TTL expires", calls === 2, `${calls} request(s)`);
+
+  const offlineFetch = (async () => {
+    throw new Error("offline");
+  }) as unknown as typeof fetch;
+  const stale = await price.fetchRxdUsd({ fetchImpl: offlineFetch, now: 1_000 + 20 * 60_000 });
+  check(
+    "offline falls back to the cached price, marked stale",
+    stale?.usd === 0.00003 && stale?.stale === true,
+    `stale=${stale?.stale}`,
+  );
+
+  store.clear();
+  const nothing = await price.fetchRxdUsd({ fetchImpl: offlineFetch, now: 5_000 });
+  check("returns null (not a throw) when nothing is available", nothing === null);
 }
 
 console.log(`\n${failures === 0 ? "ALL BROWSER-PATH CHECKS PASSED" : failures + " CHECK(S) FAILED"}`);

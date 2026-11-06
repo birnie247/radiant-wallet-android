@@ -111,8 +111,10 @@
         <tr>
           <td>Preferences</td>
           <td>
-            The Electrum server you picked and whether screenshots are allowed,
-            in the app's private storage.
+            The Electrum server you picked, whether screenshots are allowed, your
+            auto-lock delay, and whether USD values are shown — in the app's
+            private storage. The most recent RXD/USD price is cached there too, so
+            the balance can show a value without a fresh request.
           </td>
         </tr>
       </table>
@@ -134,6 +136,16 @@
         it is why the app supports switching servers. Their handling of that data
         is governed by their own policies, not ours. The app does not send your
         recovery phrase, keys, or passphrase to any server.
+      </p>
+      <p>
+        <strong>USD prices (optional).</strong> If you leave
+        <em>Show USD value</em> enabled (Settings &rarr; Display), the app fetches
+        the RXD/USD rate from a public price API — CoinGecko, falling back to
+        CoinPaprika. That request tells the provider your IP address and that you
+        use a Radiant wallet; it carries no wallet data, addresses or balance. It
+        is sent at most once every couple of minutes, and the result is cached on
+        your device. Turn the setting off and the app makes no price requests at
+        all.
       </p>
 
       <h2>5. Permissions</h2>

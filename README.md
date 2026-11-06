@@ -29,9 +29,10 @@ behaviour is the ecosystem's own proven code rather than a re-implementation.
 | Send requires the passphrase **or** a biometric, checked against the open wallet | ✅ passphrase path verified; biometric branch compiles, not device-run |
 | QR code display for receiving | ✅ implemented |
 | Transaction history with confirmation counts | ✅ verified against synthetic txs |
-| Biometric unlock (Android Keystore + BiometricPrompt) | ✅ compiles into APK; not device-run |
-| Recovery phrase blocks screenshots & screen recording | ✅ compiles into APK; not device-run |
-| **QR scanning, Glyph tokens, WAVE names, price** | ❌ not yet |
+| Biometric unlock (Android Keystore + BiometricPrompt) | ✅ verified on device (enrol + unlock) |
+| Recovery phrase blocks screenshots & screen recording | ✅ verified on device (`SECURE` window flag) |
+| USD value of the balance (CoinGecko, cached) | ✅ live API verified; opt-out in Settings |
+| **QR scanning, Glyph tokens, WAVE names** | ❌ not yet |
 
 > **Honest caveat:** no transaction has been broadcast to mainnet from this code
 > by me, because that requires funds. Everything up to and including a valid
@@ -561,8 +562,28 @@ Two details that make this actually hold:
    auto-released on unmount. The safe failure direction (stuck secure) is
    preferred over the dangerous one.
 
-## Transaction confirmations
+## USD price
 
+The balance card shows an approximate USD value; Settings → **Display** has a
+*Show USD value* toggle and states the current unit price and its source.
+
+- **Source:** CoinGecko `ids=radiant` (verified — `/search?query=radiant` returns
+  id `radiant`, symbol RXD), with CoinPaprika (`rxd-radiant`) as a fallback.
+- **Cached** for 2 minutes in `localStorage`. If both providers fail, the cached
+  value is shown marked `cached`. The wallet never breaks because a price API is
+  down: `fetchRxdUsd()` returns null instead of throwing.
+- **RXD is worth fractions of a cent**, so a normal personal balance is worth
+  cents. Anything under 1¢ renders as `< $0.01`, not a meaningless `$0.003`.
+- **Privacy:** this is the only request to a third party that isn't an Electrum
+  server. It reveals your IP address and that you use a Radiant wallet, so it is
+  opt-out, sends nothing but the coin id, and is disclosed in
+  `docs/privacy-policy.html`.
+
+The two providers disagreed by ~15% when this was written (`$0.0000286` vs
+`$0.0000335`) because they aggregate different venues — which is exactly why the
+UI names the source instead of implying a single authoritative number.
+
+## Transaction confirmations
 `src/lib/history.ts` builds a confirmation-annotated history using only standard
 ElectrumX calls (`blockchain.scripthash.get_history`,
 `blockchain.transaction.get`, `blockchain.block.header`). For each transaction it
