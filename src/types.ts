@@ -34,6 +34,17 @@ export interface Nav {
    * Null when no cross-check was possible. Non-zero means the servers disagree.
    */
   tipDrift: number | null;
+  /**
+   * Result of SPV header verification, or null before the first attempt.
+   * `ok: false` means the chain could not be verified and `reason` says why — the
+   * wallet stays usable, but nothing should claim to be proven.
+   */
+  spv: {
+    ok: boolean;
+    tip: number;
+    checked: number;
+    reason: string;
+  } | null;
   allowScreenshots: boolean;
   setAllowScreenshots: (allow: boolean) => void;
   /**

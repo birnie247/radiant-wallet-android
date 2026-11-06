@@ -45,6 +45,7 @@ The distinction this repo keeps coming back to is **verified** versus **assumed*
 | Broadcast | ✅ **first real mainnet send succeeded** (owner-verified) |
 | Live balance updates (server push + backstop poll) | ✅ push accepted by the live server |
 | Transaction history with confirmation counts | ✅ verified against synthetic transactions |
+| SPV: headers, chain linkage, merkle proofs | ✅ verified against live mainnet |
 | Tap a transaction to open it in a block explorer | ✅ live link returns HTTP 200 |
 | Biometric unlock (AndroidKeyStore + BiometricPrompt) | ✅ verified on device, enrol and unlock |
 | Screenshots and recording blocked for the seed | ✅ verified on device (`SECURE` window flag) |
@@ -217,32 +218,61 @@ and the current unit price in Settings → Display.
 | HIGH-1 debuggable + WebView debugging | **Fixed** — debugging forced off natively; release builds are `debuggable=false` |
 | HIGH-2 debug signing key | **Fixed** — release keystore, R8 + resource shrinking, APK Signature v2 + v3 (`CN=Birnie`). No keystore ⇒ an *unsigned* APK, never a debug-signed one |
 | MEDIUM-1 weak passphrase / KDF | **Fixed** — 12-char minimum, PBKDF2 600k, vault schema v2 with transparent upgrade |
-| MEDIUM-2 untrusted Electrum server | **Partially** — bare-IP endpoint removed, `verified` gates connect order, cross-operator tip check. **Not SPV** |
+| MEDIUM-2 untrusted Electrum server | **Fixed** — header proof of work, checkpointed chain linkage and merkle proofs (`src/lib/spv.ts`), plus the bare-IP endpoint removed and `verified` gating connect order. The per-block difficulty rule is not validated; see [SPV](#spv-proving-transactions-instead-of-trusting-the-server) |
 | LOW/MED-3 seed resident in heap | **Improved** — per-payment re-auth, session dropped on backgrounding |
 | L1 FLAG_SECURE scope | **Fixed** — app-wide by default |
 | L2 WebView surface | **Fixed** |
 | L3 dev metadata in bundle | **Mitigated** — R8 strips the bytecode; the vendored `package.json` still ships (no secrets) |
 | L4 trusted KDF parameters | **Fixed** — range-checked and versioned |
 
-### The honest gap: there is no SPV
+### SPV: proving transactions instead of trusting the server
 
-Verifying a server's answers means fetching block headers, checking proof-of-work
-(Radiant uses SHA-512/256d) and verifying each transaction's merkle branch to a
-header. That is substantial, consensus-sensitive work and it is **not
-implemented**. What exists is a cheap disagreement check: `crossCheckTip` compares
-the chain tip against another operator, bounded to 2 peers × 5 s — and when every
-independent operator was offline, that check reported "skipped".
+`src/lib/spv.ts` implements the verification that MEDIUM-2 was really about:
 
-So the app still trusts a single Electrum server for balances, history and
-confirmation counts. It cannot steal funds — it never sees a key — but it can
-deceive about state. Treat it as a semi-trusted view of the chain.
+1. **Header proof of work** — every block hash must meet the target its own `bits`
+   encodes.
+2. **Chain linkage from a pinned checkpoint** — `CHECKPOINT` names one block (hash
+   and height) this build trusts; the server's header at that height is re-hashed and
+   compared before anything else is believed, then every header up to the tip must
+   name its predecessor.
+3. **Merkle inclusion** — each confirmed transaction's branch is folded and compared
+   with that block's merkle root.
+4. **Transaction binding** — the transaction id must equal the hash of the body the
+   server returned, so a substituted transaction cannot ride an older proof.
+
+Three constants were measured against mainnet rather than assumed, and each would
+have produced a verifier that silently never fails if guessed:
+
+| Fact | Reality |
+| --- | --- |
+| Block hash / proof of work | double **SHA-512/256** — double SHA-256 does *not* satisfy the target |
+| Transaction id | double **SHA-256** |
+| Merkle tree | double **SHA-256**, a different hash from proof of work |
+
+Proven rows carry a **✓ proven** badge in the activity list, and the Home screen says
+how far the chain verified, or why it could not.
+
+`crossCheckTip` is kept as a cheap independent disagreement check, but it is no longer
+the only thing standing between a user and a lying server.
+
+**What this does not do.** Radiant retargets difficulty on *every* block (398 of 400
+consecutive mainnet headers carry a different `bits`), so validating the adjustment
+rule needs the consensus formula, which is not implemented. Instead each header's
+target must stay within `MAX_TARGET_FACTOR` (2×) of the checkpoint's. Forging blocks
+from the checkpoint then costs at least half the real work over that span — not
+feasible on Radiant — but it is a bound, not a proof. The trade-off runs the other
+way too: a genuine hash-rate collapse could make the wallet refuse to sync until a
+new checkpoint ships. That is a loud, recoverable failure rather than a silent one,
+and it is why the checkpoint sits near the tip and should be refreshed each release.
+Blocks older than the pinned checkpoint are not verified.
 
 ### Limitations
 
 1. **One real send is not a track record.** Broadcast now has a genuine mainnet
    success behind it (see [Status](#status)), but a single send proves the happy path,
    not every path.
-2. **No SPV**, as above.
+2. **SPV is bounded, not complete** — see the section above. Headers, linkage and
+   merkle proofs are verified; the difficulty rule is not.
 3. **Keys live in JS memory** while unlocked. The same class of exposure as any
    JavaScript wallet.
 4. **Screenshot blocking is framework-enforced only**: it defeats Android captures
@@ -482,7 +512,7 @@ shipping.
 | Item | Notes |
 | --- | --- |
 | More real sends | One mainnet send succeeded; widen that over time |
-| SPV / header verification | The largest remaining trust gap |
+| SPV difficulty rule | Headers, linkage and merkle proofs are verified; the per-block DAA is the last piece |
 | QR **scanning** | Display works; camera scanning does not exist yet |
 | Glyph tokens, WAVE names | Needs `radiantcore.org` endpoints, unreachable when last checked |
 | Keystore key invalidation | Survived in code, but only provable on a device that re-enrols a fingerprint |

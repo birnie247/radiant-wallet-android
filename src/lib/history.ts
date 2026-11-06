@@ -30,6 +30,14 @@ export interface HistoryEntry {
   net: bigint;
   /** Only set when every input belongs to us (i.e. a normal send). */
   fee?: bigint;
+  /**
+   * True when an SPV merkle proof tied this transaction to a header whose chain was
+   * verified back to the pinned checkpoint. Undefined means "not checked" (still
+   * pending, older than the checkpoint, or skipped) — never "checked and failed".
+   */
+  verified?: boolean;
+  /** Why verification did not happen. */
+  verifyNote?: string;
 }
 
 interface HistoryRow {
