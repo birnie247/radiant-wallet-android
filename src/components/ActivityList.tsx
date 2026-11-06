@@ -1,4 +1,6 @@
 import { formatRxd, shortId } from "../lib/money";
+import { explorerTxUrl } from "../lib/explorer";
+import { openExternalUrl } from "../lib/openUrl";
 import type { HistoryEntry } from "../lib/history";
 
 function relativeTime(seconds?: number): string {
@@ -32,8 +34,16 @@ function ActivityRow({ entry }: { entry: HistoryEntry }) {
   const sign = incoming ? "+" : outgoing ? "−" : "";
   const amount = entry.net < 0n ? -entry.net : entry.net;
 
-  return (
-    <div className="row">
+  // Opening the transaction in a block explorer is the whole point of the row
+  // being tappable, so it needs the link to be well formed. Null here only
+  // happens for a corrupt txid, in which case the row stays inert.
+  const exploreUrl = explorerTxUrl(entry.txid);
+  const openExplorer = () => {
+    if (exploreUrl) void openExternalUrl(exploreUrl).catch(() => undefined);
+  };
+
+  const body = (
+    <>
       <div
         style={{
           width: 30,
@@ -77,7 +87,25 @@ function ActivityRow({ entry }: { entry: HistoryEntry }) {
           </span>
         </div>
       </div>
-    </div>
+    </>
+  );
+
+  if (!exploreUrl) {
+    return <div className="row">{body}</div>;
+  }
+
+  return (
+    <button
+      type="button"
+      className="row row-button"
+      onClick={openExplorer}
+      aria-label={`View transaction ${entry.txid} in the block explorer`}
+    >
+      {body}
+      <span className="row-chevron" aria-hidden="true">
+        ↗
+      </span>
+    </button>
   );
 }
 

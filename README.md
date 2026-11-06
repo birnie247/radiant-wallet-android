@@ -29,6 +29,7 @@ behaviour is the ecosystem's own proven code rather than a re-implementation.
 | Send requires the passphrase **or** a biometric, checked against the open wallet | ✅ passphrase path verified; biometric branch compiles, not device-run |
 | QR code display for receiving | ✅ implemented |
 | Transaction history with confirmation counts | ✅ verified against synthetic txs |
+| Tap a transaction to open it in a block explorer | ✅ live link verified (HTTP 200) |
 | Biometric unlock (Android Keystore + BiometricPrompt) | ✅ verified on device (enrol + unlock) |
 | Recovery phrase blocks screenshots & screen recording | ✅ verified on device (`SECURE` window flag) |
 | USD value of the balance (CoinGecko, cached) | ✅ live API verified; opt-out in Settings |

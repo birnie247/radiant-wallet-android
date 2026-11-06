@@ -171,6 +171,22 @@ if (process.argv.includes("--live")) {
   }
   check("live: server accepts push subscriptions", pushOk, pushDetail);
 
+  // The transaction link we hand to the OS must point at a live explorer: the
+  // obvious choices are not all reachable (explorer.radiantblockchain.org, the
+  // Photonic default, times out from here).
+  const exProbe = await import("../src/lib/explorer");
+  const probeUrl = exProbe.explorerTxUrl("0".repeat(63) + "1");
+  let explorerOk = false;
+  let explorerDetail = "";
+  try {
+    const res = await fetch(probeUrl as string);
+    explorerOk = res.ok;
+    explorerDetail = `HTTP ${res.status} · ${new URL(probeUrl as string).host}`;
+  } catch (e) {
+    explorerDetail = (e as Error).message;
+  }
+  check("live: block explorer answers a /tx/ link", explorerOk, explorerDetail);
+
   // MEDIUM-2: independent tip cross-check.
   const primaryTip = await client.request<{ height: number }>(
     "blockchain.headers.subscribe",
@@ -881,6 +897,27 @@ if (process.argv.includes("--live")) {
     `${handle2.subscribed.length} ok / ${handle2.failed.length} refused`,
   );
   await handle2.dispose();
+}
+
+// 14. Block explorer links for a tapped transaction.
+{
+  const ex = await import("../src/lib/explorer");
+  const txid = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  const expected = `https://radiantexplorer.com/tx/${txid}`;
+
+  check("builds a /tx/ link", ex.explorerTxUrl(txid) === expected, ex.explorerTxUrl(txid) ?? "null");
+  check(
+    "normalises an uppercase txid",
+    ex.explorerTxUrl(txid.toUpperCase()) === expected,
+  );
+  check("trims surrounding whitespace", ex.explorerTxUrl(`  ${txid}  `) === expected);
+  check("rejects a truncated id", ex.explorerTxUrl("abc123") === null);
+  check("rejects non-hex characters", ex.explorerTxUrl("z".repeat(64)) === null);
+  check("rejects an empty value", ex.explorerTxUrl("") === null);
+  check(
+    "always https (the native plugin refuses anything else)",
+    (ex.explorerTxUrl(txid) ?? "").startsWith("https://"),
+  );
 }
 
 console.log(`\n${failures === 0 ? "ALL BROWSER-PATH CHECKS PASSED" : failures + " CHECK(S) FAILED"}`);

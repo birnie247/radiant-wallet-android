@@ -514,6 +514,30 @@ textarea {
   border-bottom: none;
 }
 
+/* A row that opens an external link (block explorer). */
+button.row-button {
+  width: 100%;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--line);
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  padding: 13px 0;
+}
+
+button.row-button:active {
+  background: var(--bg-elev);
+}
+
+.row-chevron {
+  flex: 0 0 auto;
+  padding-left: 8px;
+  font-size: 13px;
+  color: var(--text-faint);
+}
+
 .row .grow {
   flex: 1;
   min-width: 0;

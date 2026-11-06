@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { formatRxd, parseRxd, shortId } from "../lib/money";
+import { explorerTxUrl } from "../lib/explorer";
+import { openExternalUrl } from "../lib/openUrl";
 import {
   biometricStatus,
   cancelBiometricPrompt,
@@ -165,9 +167,20 @@ export default function Send({ nav }: { nav: Nav }) {
               {txid}
             </div>
           </div>
+          {explorerTxUrl(txid) && (
+            <button
+              className="btn"
+              onClick={() => {
+                const url = explorerTxUrl(txid);
+                if (url) void openExternalUrl(url).catch(() => undefined);
+              }}
+            >
+              View on explorer ↗
+            </button>
+          )}
           <div className="hint">
             It can take a few minutes to confirm — Radiant targets a 5 minute
-            block time. Your balance updates after the next refresh.
+            block time. Your balance updates on its own once the network sees it.
           </div>
           <button className="btn primary" onClick={() => nav.go("home")}>
             Done

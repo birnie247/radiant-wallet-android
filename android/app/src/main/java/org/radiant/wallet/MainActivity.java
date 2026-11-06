@@ -13,6 +13,7 @@ public class MainActivity extends BridgeActivity {
         // otherwise the JS side cannot find them.
         registerPlugin(BiometricVaultPlugin.class);
         registerPlugin(ScreenSecurityPlugin.class);
+        registerPlugin(OpenUrlPlugin.class);
         super.onCreate(savedInstanceState);
 
         hardenWebView();
