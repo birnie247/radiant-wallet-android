@@ -23,7 +23,13 @@ ecosystem's own proven code rather than a re-implementation.
 [Testing](#testing) · [Security](#security) · [Releasing](#releasing) ·
 [Known issues and roadmap](#known-issues-and-roadmap) · [Licence](#licence)
 
+> **Just want the app?** Download
+> [`radiant-wallet-1.0.10.apk`](https://github.com/birnie247/radiant-wallet-android/releases/latest)
+> from Releases and tap it. Read [Before you trust it](#limitations) first — this is
+> unaudited software handling real money.
+
 ---
+
 
 ## Status
 
@@ -63,6 +69,15 @@ emulator — Web Crypto and WebSocket both work over `localhost`.
 
 ## Install and update
 
+**Easiest:** grab the APK from
+[**Releases**](https://github.com/birnie247/radiant-wallet-android/releases/latest),
+copy it to the phone, tap it, and allow "install unknown apps" for whichever app opens
+it (Files, Chrome, Drive). Android 8.0+ (minSdk 26), package `org.radiant.wallet`.
+Each release lists the size and SHA-256 of the exact bytes, so a download can be
+checked before installing.
+
+**Build it yourself —**
+
 ```powershell
 npm run release      # web build → cap sync → signed APK → signature verified
 # → dist-android/radiant-wallet-<version>.apk
@@ -70,8 +85,6 @@ npm run release      # web build → cap sync → signed APK → signature verif
 C:\Android\Sdk\platform-tools\adb.exe install -r "dist-android\radiant-wallet-1.0.10.apk"
 ```
 
-Or copy the `.apk` to the phone and tap it, allowing "install unknown apps" for
-whichever app opens it. Android 8.0+ (minSdk 26).
 
 **Updating keeps your wallet, as long as the signing key does not change.**
 Android identifies an app by package name *plus* signing certificate:
@@ -393,6 +406,26 @@ npm run release        # → dist-android/radiant-wallet-1.0.11.apk
 `npm run release` builds the web assets, syncs Capacitor, produces a *signed*
 release APK, runs `apksigner` to verify it, and copies it to `dist-android/`. It
 refuses to hand over an unsigned or broken artifact.
+
+### Publishing the release
+
+```powershell
+$env:GITHUB_TOKEN = "<token with repo scope>"
+npm run publish:release
+```
+
+This creates the `v<version>` tag and release, uploads the APK as an asset, and
+prints the download URL. It is safe to re-run: an existing release is reused and an
+already-attached asset of the same size is skipped, so a failed upload doesn't leave
+a 422 behind.
+
+The release body is generated from the exact bytes being uploaded — size and SHA-256
+are computed from the file, never typed. To write proper notes instead, add
+`docs/release-notes-<version>.md` and it is used verbatim.
+
+Publishing straight from a release asset is deliberate: it is the only download route
+that gives users a stable URL, a visible file size and a hash to check, without
+needing to build anything.
 
 `package.json` is the single source of truth for the version; Gradle reads it and
 derives `versionCode` as `major*10000 + minor*100 + patch`, so it always increases
