@@ -33,13 +33,16 @@ export const GENESIS_HASH =
 /**
  * A block this build trusts without proof.
  *
- * Pinning gives the chain a root: a server cannot substitute a different history
- * at or below this height. Keep it recent (this one is ~150 blocks deep, i.e. well
- * past ordinary reorg depth) and update it when the app is released.
+ * Pinning gives the chain a root: a server cannot substitute a different history at
+ * or below this height. Keep it recent and refresh it with each release — the chain
+ * moves ~288 blocks a day, and the older this gets the more the difficulty tolerance
+ * below has to absorb.
+ *
+ * Refreshed for 1.0.12: height 479316, 150 blocks behind the tip when taken.
  */
 export const CHECKPOINT = {
-  height: 479_295,
-  hash: "000000000000004b4c6641c87f933f120590d23fa4e6bde16f3e215165fba245",
+  height: 479_316,
+  hash: "00000000000000bef105a7576bea622d81a054b8e40d146db6a315fafdc8a0aa",
 } as const;
 
 /**
@@ -433,4 +436,30 @@ export async function verifyTransaction(
 export async function verifyTxid(rawTxHex: string, txid: string): Promise<boolean> {
   const computed = toHex(reversed(await sha256d(toBytes(rawTxHex))));
   return computed === txid.trim().toLowerCase();
+}
+
+/**
+ * One-line summary of how many transactions were proven.
+ *
+ * Lives here, next to the verification it describes, so it can be tested: the
+ * wording has to distinguish "nothing to prove yet" from "not checked" from "a proof
+ * failed", and getting that wrong would either overstate or alarm.
+ *
+ * `checked` is what SPV actually attempted (bounded work), `confirmedCount` is how
+ * many confirmed rows the wallet is showing.
+ */
+export function describeProofs(
+  proofs: { checked: number; proven: number } | null,
+  confirmedCount: number,
+): string {
+  if (!proofs) return "transactions not proven yet";
+  if (proofs.checked === 0) {
+    return confirmedCount === 0
+      ? "nothing confirmed to prove yet"
+      : "transactions not proven yet";
+  }
+  const noun = proofs.checked === 1 ? "transaction" : "transactions";
+  const bounded =
+    confirmedCount > proofs.checked ? ` (newest ${proofs.checked} checked)` : "";
+  return `${proofs.proven} of ${proofs.checked} confirmed ${noun} proven${bounded}`;
 }

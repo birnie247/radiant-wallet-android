@@ -249,8 +249,10 @@ have produced a verifier that silently never fails if guessed:
 | Transaction id | double **SHA-256** |
 | Merkle tree | double **SHA-256**, a different hash from proof of work |
 
-Proven rows carry a **✓ proven** badge in the activity list, and the Home screen says
-how far the chain verified, or why it could not.
+Proven rows carry a **✓ proven** badge in the activity list, and the Home screen reads
+`Chain verified to block N — 3 of 3 confirmed transactions proven`, or says why it
+could not. The count distinguishes what was *checked* from what was *proven* (the
+work is bounded to the newest few rows), so it never overstates.
 
 `crossCheckTip` is kept as a cheap independent disagreement check, but it is no longer
 the only thing standing between a user and a lying server.

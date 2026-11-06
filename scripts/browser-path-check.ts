@@ -980,6 +980,46 @@ if (process.argv.includes("--live")) {
     "a corrupted merkle branch is rejected",
     (await spv.merkleRootFromProof(TXID, corrupted, 0)) !== MERKLE_479445,
   );
+
+  // The Home summary must not overstate or alarm. Each case is a real state the
+  // wallet can be in, and "0 checked" is the one most easily mis-worded.
+  check(
+    "summary: nothing checked yet",
+    spv.describeProofs(null, 3) === "transactions not proven yet",
+    spv.describeProofs(null, 3),
+  );
+  check(
+    "summary: no confirmed transactions",
+    spv.describeProofs({ checked: 0, proven: 0 }, 0) === "nothing confirmed to prove yet",
+    spv.describeProofs({ checked: 0, proven: 0 }, 0),
+  );
+  check(
+    "summary: confirmed rows but none checked",
+    spv.describeProofs({ checked: 0, proven: 0 }, 4) === "transactions not proven yet",
+    spv.describeProofs({ checked: 0, proven: 0 }, 4),
+  );
+  check(
+    "summary: all proven",
+    spv.describeProofs({ checked: 3, proven: 3 }, 3) === "3 of 3 confirmed transactions proven",
+    spv.describeProofs({ checked: 3, proven: 3 }, 3),
+  );
+  check(
+    "summary: one transaction is singular",
+    spv.describeProofs({ checked: 1, proven: 1 }, 1) === "1 of 1 confirmed transaction proven",
+    spv.describeProofs({ checked: 1, proven: 1 }, 1),
+  );
+  check(
+    "summary: a failed proof shows the shortfall",
+    spv.describeProofs({ checked: 4, proven: 2 }, 4) === "2 of 4 confirmed transactions proven",
+    spv.describeProofs({ checked: 4, proven: 2 }, 4),
+  );
+  check(
+    "summary: bounded work is disclosed",
+    spv
+      .describeProofs({ checked: 8, proven: 8 }, 20)
+      .endsWith("(newest 8 checked)"),
+    spv.describeProofs({ checked: 8, proven: 8 }, 20),
+  );
 }
 
 // 16. SPV against the live chain.
