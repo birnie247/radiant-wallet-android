@@ -583,6 +583,31 @@ The two providers disagreed by ~15% when this was written (`$0.0000286` vs
 `$0.0000335`) because they aggregate different venues — which is exactly why the
 UI names the source instead of implying a single authoritative number.
 
+### Live balance updates
+
+The balance keeps itself current, and only one part of that is a timer:
+
+1. **Electrum push (primary).** After each scan the app subscribes
+   (`blockchain.scripthash.subscribe`) to every address with history plus the
+   next 3 unused ones — so the next payment to a fresh address is caught too. The
+   server notifies the instant an address's output set changes.
+2. **Debounce + settle window.** One payment typically touches several addresses
+   (payment + change); a burst produces a single re-scan. Notifications in the
+   first second after subscribing are ignored, because some servers echo the
+   current status back — treating that as news would create a
+   scan→resubscribe→scan loop.
+3. **Backstop poll.** A 60 s scan, only while the app is visible, in case a
+   server doesn't push or a socket dies silently.
+4. **Manual.** The Refresh button, and automatically after sending.
+
+Background scans are **silent** — no "Refreshing…" overlay — so an incoming
+payment never interrupts what you were doing. Subscriptions are torn down on
+lock, on server switch and on unmount, before the socket closes.
+
+Verified live: `OK server accepts push subscriptions (status null)` — Radiant's
+ElectrumX does implement scripthash subscriptions, so push (not the poll) is what
+normally refreshes the balance.
+
 ## Transaction confirmations
 `src/lib/history.ts` builds a confirmation-annotated history using only standard
 ElectrumX calls (`blockchain.scripthash.get_history`,

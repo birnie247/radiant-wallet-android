@@ -4,6 +4,7 @@ import { hasVault, unlockVault, type WalletSecrets } from "./lib/vault";
 import { connect, crossCheckTip, scanWallet } from "./lib/wallet";
 import { getPreferredServer } from "./lib/servers";
 import { loadHistory, type HistoryEntry } from "./lib/history";
+import { watchWalletAddresses, type WatchHandle } from "./lib/liveUpdates";
 import {
   fetchRxdUsd,
   loadFiatEnabled,
@@ -119,6 +120,37 @@ export default function App() {
     }
   }, []);
 
+  /** One scan at a time; push notifications arrive in bursts. */
+  const scanningRef = useRef(false);
+  /** Active push subscriptions for this unlocked session. */
+  const watchRef = useRef<WatchHandle | null>(null);
+  /** Indirection so the watcher can trigger the newest runScan without a cycle. */
+  const onPushRef = useRef<() => void>(() => {});
+
+  /**
+   * Replace the push subscriptions for the current address set.
+   *
+   * Push is an optimisation, not the only way balances update: if the server
+   * refuses a subscription (some cap them) the backstop poll still runs.
+   */
+  const establishWatch = useCallback(async (next: Session) => {
+    try {
+      await watchRef.current?.dispose();
+    } catch {
+      /* ignore */
+    }
+    watchRef.current = null;
+    try {
+      watchRef.current = await watchWalletAddresses(
+        next.client,
+        next.scan.addresses,
+        () => onPushRef.current(),
+      );
+    } catch {
+      /* ignore — the poll covers it */
+    }
+  }, []);
+
   /** Connect, scan, and hold the wallet in memory. */
   const openWallet = useCallback(async (secrets: WalletSecrets) => {
     setBusy("Connecting to a Radiant server…");
@@ -138,38 +170,85 @@ export default function App() {
         onProgress: setBusy,
       });
 
-      setSession({ secrets, wallet, client, endpoint, scan });
-      setScreen("home");
-      void hydrateHistory({ secrets, wallet, client, endpoint, scan });
-      void hydratePrice();
-    } finally {
-      setBusy("");
-    }
-  }, [hydrateHistory, hydratePrice]);
-
-  /** Re-scan balances against the live connection. */
-  const refresh = useCallback(async () => {
-    const current = sessionRef.current;
-    if (!current) return;
-    setBusy("Refreshing…");
-    try {
-      const scan = await scanWallet(current.client, current.wallet, {
-        onProgress: setBusy,
-      });
-      const next = { ...current, scan };
+      const next: Session = { secrets, wallet, client, endpoint, scan };
       setSession(next);
+      setScreen("home");
       void hydrateHistory(next);
       void hydratePrice();
+      // Subscribe to pushes so the balance keeps itself current.
+      void establishWatch(next);
     } finally {
       setBusy("");
     }
-  }, [hydrateHistory, hydratePrice]);
+  }, [hydrateHistory, hydratePrice, establishWatch]);
+
+  /**
+   * Re-scan balances against the live connection.
+   *
+   * `silent` runs it in the background: no "Refreshing…" overlay, no busy text.
+   * That path is used by server push notifications and the backstop poll, so an
+   * incoming payment never interrupts whatever the user is doing.
+   */
+  const runScan = useCallback(
+    async (silent: boolean) => {
+      const current = sessionRef.current;
+      // One scan at a time: pushes can arrive in bursts, and overlapping scans
+      // would fight over the session.
+      if (!current || scanningRef.current) return;
+      scanningRef.current = true;
+      if (!silent) setBusy("Refreshing…");
+      try {
+        const scan = await scanWallet(current.client, current.wallet, {
+          onProgress: silent ? undefined : setBusy,
+        });
+        const next = { ...current, scan };
+        setSession(next);
+        void hydrateHistory(next);
+        void hydratePrice();
+        // The set of addresses with activity can grow, so re-subscribe.
+        void establishWatch(next);
+      } finally {
+        scanningRef.current = false;
+        if (!silent) setBusy("");
+      }
+    },
+    [hydrateHistory, hydratePrice, establishWatch],
+  );
+
+  /** User-initiated refresh (Home screen button, after a send). */
+  const refresh = useCallback(() => runScan(false), [runScan]);
+
+  // A push notification means "something changed": scan quietly, no overlay.
+  useEffect(() => {
+    onPushRef.current = () => void runScan(true);
+  }, [runScan]);
+
+  // Backstop poll. Pushes normally arrive within a second, but a server that
+  // does not push — or a socket that died silently — would otherwise leave the
+  // balance stale until the user tapped Refresh. Deliberately gentle (60s) and
+  // only while the app is actually on screen.
+  const hasSession = session !== null;
+  useEffect(() => {
+    if (!hasSession) return;
+    const POLL_MS = 60_000;
+    const id = window.setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      void runScan(true);
+    }, POLL_MS);
+    return () => window.clearInterval(id);
+  }, [hasSession, runScan]);
 
   /** Drop the socket and reconnect, optionally to a newly preferred server. */
   const reconnect = useCallback(async () => {
     const current = sessionRef.current;
     if (!current) return;
     setBusy("Reconnecting…");
+    try {
+      await watchRef.current?.dispose();
+    } catch {
+      /* ignore */
+    }
+    watchRef.current = null;
     try {
       current.client.close();
     } catch {
@@ -188,13 +267,18 @@ export default function App() {
       setSession(next);
       void hydrateHistory(next);
       void hydratePrice();
+      void establishWatch(next);
     } finally {
       setBusy("");
     }
-  }, [hydrateHistory, hydratePrice]);
+  }, [hydrateHistory, hydratePrice, establishWatch]);
 
   const lock = useCallback(() => {
     const current = sessionRef.current;
+    // Stop push subscriptions before the socket goes away, so nothing tries to
+    // unsubscribe over a closed connection.
+    void watchRef.current?.dispose();
+    watchRef.current = null;
     if (current) {
       try {
         current.client.close();
@@ -233,6 +317,7 @@ export default function App() {
   // Tear the socket down on unmount.
   useEffect(() => {
     return () => {
+      void watchRef.current?.dispose();
       try {
         sessionRef.current?.client.close();
       } catch {

@@ -157,6 +157,20 @@ if (process.argv.includes("--live")) {
     `${livePrice?.source} ${formatUsdPrice(livePrice?.usd ?? 0)} per RXD`,
   );
 
+  // Push updates are only possible if the server implements scripthash
+  // subscriptions. If it does not, the backstop poll is what keeps the balance
+  // current — so this is worth knowing rather than assuming.
+  let pushOk = false;
+  let pushDetail = "";
+  try {
+    const status = await client.subscribe(wallet.deriveKey(0).address, () => {});
+    pushOk = true;
+    pushDetail = `status ${String(status).slice(0, 12) || "(null)"}`;
+  } catch (e) {
+    pushDetail = (e as Error).message;
+  }
+  check("live: server accepts push subscriptions", pushOk, pushDetail);
+
   // MEDIUM-2: independent tip cross-check.
   const primaryTip = await client.request<{ height: number }>(
     "blockchain.headers.subscribe",
@@ -768,6 +782,105 @@ if (process.argv.includes("--live")) {
   store.clear();
   const nothing = await price.fetchRxdUsd({ fetchImpl: offlineFetch, now: 5_000 });
   check("returns null (not a throw) when nothing is available", nothing === null);
+}
+
+// 13. Live balance updates: what gets watched, debouncing, and teardown.
+{
+  const live = await import("../src/lib/liveUpdates");
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  // Fixture: two addresses with history, then unused ones.
+  const addr = (address: string, used: boolean) =>
+    ({ key: { address } as never, used, change: 0 });
+
+  const addresses = [
+    addr("used0", true),
+    addr("used1", true),
+    addr("unused0", false),
+    addr("unused1", false),
+    addr("unused2", false),
+    addr("unused3", false),
+  ];
+
+  check(
+    "watches used addresses plus a lookahead",
+    JSON.stringify(live.watchTargets(addresses, 3)) ===
+      JSON.stringify(["used0", "used1", "unused0", "unused1", "unused2"]),
+    live.watchTargets(addresses, 3).join(","),
+  );
+
+  function makeFake() {
+    const listeners = new Map<string, (s: string | null) => void>();
+    const unsubscribed: string[] = [];
+    const refuse = new Set<string>();
+    return {
+      listeners,
+      unsubscribed,
+      refuse,
+      subscribe: async (a: string, cb: (s: string | null) => void) => {
+        if (refuse.has(a)) throw new Error("refused");
+        listeners.set(a, cb);
+        return "status";
+      },
+      unsubscribe: async (a: string) => {
+        unsubscribed.push(a);
+        listeners.delete(a);
+        return true;
+      },
+      emit: (a: string) => listeners.get(a)?.("changed"),
+    };
+  }
+
+  const fake = makeFake();
+  let changes = 0;
+  const handle = await live.watchWalletAddresses(
+    fake as never,
+    addresses,
+    () => {
+      changes++;
+    },
+    { lookahead: 3, debounceMs: 40, settleMs: 60 },
+  );
+  check("subscribes to every target", handle.subscribed.length === 5, `${handle.subscribed.length}`);
+  check("nothing was refused", handle.failed.length === 0);
+
+  // The subscription's own echo must not trigger a scan (that was the loop risk).
+  fake.emit("used0");
+  await sleep(90);
+  check("ignores notifications inside the settle window", changes === 0, `${changes} change(s)`);
+
+  await sleep(80);
+  fake.emit("used0");
+  fake.emit("used1");
+  fake.emit("unused0");
+  await sleep(140);
+  check("coalesces a burst into one re-scan", changes === 1, `${changes} change(s)`);
+
+  await handle.dispose();
+  check(
+    "dispose unsubscribes everything",
+    fake.unsubscribed.length === 5,
+    `${fake.unsubscribed.length} unsubscribed`,
+  );
+  fake.emit("used0");
+  await sleep(140);
+  check("no callbacks after dispose", changes === 1, `${changes} change(s)`);
+
+  // A server that caps subscriptions must not break the rest.
+  const picky = makeFake();
+  picky.refuse.add("unused0");
+  const handle2 = await live.watchWalletAddresses(
+    picky as never,
+    addresses,
+    () => {},
+    { lookahead: 3, settleMs: 0 },
+  );
+  check(
+    "a refused subscription is reported, not fatal",
+    handle2.failed.length === 1 && handle2.subscribed.length === 4,
+    `${handle2.subscribed.length} ok / ${handle2.failed.length} refused`,
+  );
+  await handle2.dispose();
 }
 
 console.log(`\n${failures === 0 ? "ALL BROWSER-PATH CHECKS PASSED" : failures + " CHECK(S) FAILED"}`);
