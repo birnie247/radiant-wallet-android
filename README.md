@@ -11,7 +11,7 @@ ecosystem's own proven code rather than a re-implementation.
 
 |  |  |
 | --- | --- |
-| Version | 1.0.10 |
+| Version | 1.0.13 |
 | Licence | MIT, with Apache-2.0 artwork |
 | Android | minSdk 26 · targetSdk 36 |
 | Chain access | ElectrumX over WebSocket |
@@ -24,7 +24,7 @@ ecosystem's own proven code rather than a re-implementation.
 [Known issues and roadmap](#known-issues-and-roadmap) · [Licence](#licence)
 
 > **Just want the app?** Download
-> [`radiant-wallet-1.0.10.apk`](https://github.com/birnie247/radiant-wallet-android/releases/latest)
+> [`radiant-wallet-1.0.13.apk`](https://github.com/birnie247/radiant-wallet-android/releases/latest)
 > from Releases and tap it. Read [Before you trust it](#limitations) first — this is
 > unaudited software handling real money.
 
@@ -52,6 +52,7 @@ The distinction this repo keeps coming back to is **verified** versus **assumed*
 | Auto-lock when the app leaves the foreground | ✅ device-tested |
 | USD value of the balance | ✅ live API verified, opt-out |
 | Mainnet only | ✅ testnet removed — every testnet endpoint is dead |
+| Add / remove your own ElectrumX server | ✅ implemented; live add + handshake test verified on device |
 | QR scanning · Glyph tokens · WAVE names | ❌ not implemented |
 
 > **On broadcast:** the first funded transaction was sent with this build and
@@ -107,10 +108,11 @@ and versioning.
 ### Chain access
 
 Radiant is read over **ElectrumX WebSocket** endpoints (`wss://`). `connect()`
-tries the user's chosen server first, then the curated ones, and the sequence is
-budgeted: 7 s per connection, 4 s per handshake, **20 s total**, with no attempt
-started while under 3 s of budget remains. A refused connection fails in
-milliseconds; a blackholed one in about 2 s.
+tries the user's chosen server first, then the curated verified ones, then any
+servers the user added themselves, and the sequence is budgeted: 7 s per
+connection, 4 s per handshake, **20 s total**, with no attempt started while
+under 3 s of budget remains. A refused connection fails in milliseconds; a
+blackholed one in about 2 s.
 
 Failures are phrased for a human — *"Couldn't reach a Radiant mainnet server. Your
 connection may be down, or a firewall/VPN may be blocking it."* — and when
@@ -347,6 +349,31 @@ while `:50022` was closed, and the endpoint that actually works in the app is
 `wss://electrumx.radiantcore.org:443`. Never add a host just because `:50012`
 answers.
 
+**Your own servers.** Settings → ElectrumX server lets you add an endpoint and
+remove any entry, built-in or your own. The rules, and why:
+
+- Addresses are validated and normalised: `wss://` only (plain `ws://` is blocked
+  as mixed content, so it could never connect), no path, no credentials, and a
+  bare `host:port` is treated as `wss://host:port`. `wss://host:443` collapses to
+  `wss://host`, so pasting the default port does not create a duplicate.
+- **Test** runs a real `server.version` handshake against that one host and shows
+  the banner and latency. A server that passed is recorded `verified` and becomes
+  active immediately; one that was not tested is listed but left inactive, so a
+  typo cannot silently take over the connection.
+- Adding a server does not promote it above the built-in ones in the automatic
+  connect order — it is a fallback until you tap **Use** on it.
+- Removing a built-in server **hides** it (`rxd.wallet.hiddenServers.v1`);
+  *Restore built-in* brings it back. Removing your own server deletes it.
+- The last remaining server cannot be removed: a wallet with no server could never
+  connect again.
+- Both lists live in `localStorage`, not in the encrypted vault — a server
+  address is not a secret, and switching must never ask for the passphrase.
+  Everything read back is re-validated, so a hand-edited `ws://` entry cannot
+  sneak in.
+- A user-added host counts as its own operator for the tip cross-check, but the
+  app cannot know who really runs it — two servers behind one administrator still
+  prove nothing about each other.
+
 **Testnet was removed.** Every testnet endpoint is gone — `ECONNREFUSED`, or no
 longer resolving — so offering the network only produced a confusing failure. The
 wallet, and its address validation, are mainnet-only. The historical
@@ -366,7 +393,8 @@ src/
     biometric.ts    JS side of the Keystore plugin
     history.ts      transactions, net effect, confirmation counts
     liveUpdates.ts  scripthash subscriptions, debounce, backstop poll
-    servers.ts      endpoint list, connect budgets, auto-candidates
+    servers.ts      curated endpoints, user-added/hidden stores, connect budgets,
+                    auto-candidates
     price.ts        RXD/USD with cache and fallback
     explorer.ts     txid → explorer URL (validated)
     openUrl.ts      JS side of the OpenUrl plugin

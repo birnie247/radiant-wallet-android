@@ -564,6 +564,31 @@ button.row-button:active {
   white-space: nowrap;
 }
 
+/* Server rows in Settings. A hostname can be long, so the URL wraps and the
+   action buttons keep their size instead of being pushed off-screen. */
+.server-row {
+  align-items: flex-start;
+}
+
+.server-url {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.server-meta {
+  font-size: 12px;
+  color: var(--text-faint);
+  margin-top: 2px;
+}
+
+.server-actions {
+  display: flex;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
 .section-title {
   font-size: 12px;
   text-transform: uppercase;

@@ -64,6 +64,12 @@ android {
             // identity. WebView debugging is disabled at runtime in
             // MainActivity + capacitor.config.ts regardless.
             debuggable true
+            // Side-by-side install: give debug builds their own applicationId
+            // (and label, see src/debug/res/values/strings.xml) so a locally
+            // built debug APK can coexist with a release install, or with a
+            // build signed by a different keystore.
+            applicationIdSuffix ".debug"
+            versionNameSuffix "-debug"
         }
         release {
             debuggable false
