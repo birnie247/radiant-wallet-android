@@ -101,7 +101,10 @@ Android identifies an app by package name *plus* signing certificate:
 So back up `android/rxd-release.jks` and `android/keystore.properties` together,
 offline. Both are gitignored and must never be committed. The real backup is the
 recovery phrase, not the APK. [Releasing](#releasing) covers the keytool command
-and versioning.
+and versioning. A second local copy may sit in `.signing-backup/` (also
+gitignored, whole directory) so a re-clone or `git clean` does not take the only
+one — but note that `git clean -xdf` deletes ignored files too, which is why an
+off-repository copy is the one that actually counts.
 
 > **1.0.13 changed the signing key.** The key that signed 1.0.10–1.0.12 was not
 > available on the machine that built 1.0.13, so it was signed with a freshly
