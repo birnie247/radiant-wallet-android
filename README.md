@@ -103,6 +103,15 @@ offline. Both are gitignored and must never be committed. The real backup is the
 recovery phrase, not the APK. [Releasing](#releasing) covers the keytool command
 and versioning.
 
+> **1.0.13 changed the signing key.** The key that signed 1.0.10–1.0.12 was not
+> available on the machine that built 1.0.13, so it was signed with a freshly
+> generated key
+> (`CN=Birnie, O=Radiant Wallet, C=CA`, cert SHA-256 `226f0d84…725a7d`). Upgrading
+> from 1.0.12 therefore needs `adb uninstall org.radiant.wallet` first — which
+> deletes the local vault, so restore from your recovery phrase. 1.0.13 → later
+> releases update in place again. The current fingerprint is in
+> [`docs/release-notes-1.0.13.md`](docs/release-notes-1.0.13.md).
+
 ## How it works
 
 ### Chain access
