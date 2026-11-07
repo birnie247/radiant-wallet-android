@@ -2,9 +2,19 @@
  * ElectrumX endpoints for Radiant.
  *
  * Transport: the Radiant SDK speaks ElectrumX over **WebSocket** JSON-RPC, so
- * every endpoint below is `wss://`. The historical 50001/50002 hosts
- * (`electrum.radiant.ovh`, `electrum.radiantblockchain.org`) are dead — neither
- * hostname resolves — so do not reintroduce them.
+ * every endpoint below is `wss://` AND on a WebSocket port. The two are easy to
+ * confuse. On 2026-11-06 `electrumx.radiantcore.org` answered `server.version`
+ * on :50012 over raw TLS + line protocol, while :50001/:50002/:50003/:50004/
+ * :50022 were all closed on it — and the *usable* endpoint turned out to be
+ * `wss://electrumx.radiantcore.org:443`. A host that "answers on 50012" is
+ * therefore not automatically usable here: a browser/Capacitor WebSocket cannot
+ * speak the line protocol, it fails the HTTP upgrade.
+ *
+ * The historical 50001/50002 hosts (`electrum.radiant.ovh`,
+ * `electrum.radiantblockchain.org`) are dead — neither hostname resolves — and
+ * `electrumx.radiant.ovh`, `electrumx.radiantexplorer.com` and
+ * `electrumx2.radiantexplorer.com` no longer serve a WebSocket port. Do not
+ * reintroduce any of them.
  *
  * Trust model (security report MEDIUM-2):
  *   • Every endpoint is `wss://` with a hostname, so the TLS certificate is
@@ -37,15 +47,20 @@ export interface ServerEntry {
 }
 
 /**
- * Last live probe: 2026-11-05. Only the two radiant4people.com mainnet endpoints
- * answered. Everything else below (bladenet.online and radiantcore.org) timed
- * out, and both testnet endpoints are gone — testnet support has been removed
- * entirely, see the `testnet` entry below.
+ * Last live probe: 2026-11-06 (`npm run probe`). All three mainnet endpoints
+ * below completed a `server.version` handshake and reported Radiant's genesis
+ * hash, with tips of 479,536 / 479,536 / 479,538 — the radiantcore.org peer was
+ * two blocks ahead, so none of them is stale.
  *
- * They are kept in the list — flagged unverified — because they may come back
- * and the Settings screen lets you pick one deliberately. They are NOT tried
- * automatically, so a dead host can no longer add ~7s of silence to every
- * connection attempt. Re-check with `npm run probe`.
+ * Removed on 2026-11-06:
+ *   • `radiant2/radiantus/radiant4.bladenet.online:50022` — all three timed out.
+ *   • `wss://radiantcore.org:50004` — that host serves WebSocket on :443 only;
+ *     :50004 has no listener.
+ *
+ * Re-check with `npm run probe`. If a listed endpoint dies, flag it
+ * `verified: false` instead of deleting it: it drops out of the automatic connect
+ * order (see autoCandidates) but stays selectable in Settings, so a dead host can
+ * never add ~7s of silence to every connection attempt.
  */
 export const SERVERS: Record<NetworkName, ServerEntry[]> = {
   mainnet: [
@@ -60,27 +75,16 @@ export const SERVERS: Record<NetworkName, ServerEntry[]> = {
       verified: true,
     },
     {
-      url: "wss://radiant2.bladenet.online:50022",
-      operator: "bladenet.online",
-      verified: false,
-    },
-    {
-      url: "wss://radiantus.bladenet.online:50022",
-      operator: "bladenet.online",
-      verified: false,
-    },
-    {
-      url: "wss://radiant4.bladenet.online:50022",
-      operator: "bladenet.online",
-      verified: false,
-    },
-    {
-      url: "wss://radiantcore.org:50004",
+      url: "wss://electrumx.radiantcore.org:443",
       operator: "radiantcore.org",
-      verified: false,
+      verified: true,
     },
     // NOTE: the bare-IP endpoint wss://82.180.136.182:50004 was removed (see
-    // the trust-model note above).
+    // the trust-model note above). That IP is still current — it is what both
+    // radiantcore.org and electrumx.radiantcore.org resolve to — but only the
+    // hostname form has a certificate that can actually be verified.
+    // The three *.bladenet.online endpoints were removed on 2026-11-06: all of
+    // them timed out, and they were never verified.
   ],
   // Testnet support was removed: every testnet endpoint is gone.
   // electrumx-testnet.radiant4people.com refuses connections and

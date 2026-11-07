@@ -1,20 +1,21 @@
 // Probe Photonic Wallet's production ElectrumX WebSocket endpoints in parallel.
 import WebSocket from "ws";
 
+// Keep this list in step with SERVERS.mainnet in src/lib/servers.ts.
+//
+// Ports matter: these servers also expose raw TCP ElectrumX (50001/50002/50012)
+// and a host answering there is NOT necessarily usable, because the wallet speaks
+// WebSocket. Only a port that completes the HTTP upgrade *and* answers JSON-RPC
+// counts as live here.
 const MAINNET = [
-  "wss://82.180.136.182:50004",
   "wss://electrumx.radiant4people.com:50022",
-  "wss://radiant2.bladenet.online:50022",
-  "wss://radiantus.bladenet.online:50022",
-  "wss://radiant4.bladenet.online:50022",
   "wss://electrumx2.radiant4people.com:50022",
-  "wss://radiantcore.org:50004",
+  "wss://electrumx.radiantcore.org:443",
 ];
 
-const TESTNET = [
-  "wss://electrumx-testnet.radiant4people.com:53002",
-  "wss://testnet.bladenet.online:53002",
-];
+// Testnet support was removed from the app. This stays only so the script can be
+// pointed at the old host with `npm run probe testnet`.
+const TESTNET = ["wss://electrumx-testnet.radiant4people.com:53002"];
 
 const SH =
   "59dea47da05ec1d2ecf6ed312b523926c7ac1058860dcf2bfe3338ce4495d1e6";

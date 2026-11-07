@@ -322,23 +322,38 @@ invalid signatures. `buildPayment` builds both in one pass so they cannot drift,
 
 ### Servers
 
-Last live probe **2026-11-05** (`npm run probe`):
+Last live probe **2026-11-06** (`npm run probe`):
 
 | Endpoint | Status |
 | --- | --- |
 | `electrumx.radiant4people.com:50022` | ✅ live, 639 ms |
 | `electrumx2.radiant4people.com:50022` | ✅ live, 751 ms |
-| `radiant2/radiantus/radiant4.bladenet.online:50022` | ❌ timeout |
-| `radiantcore.org:50004` | ❌ timeout |
+| `electrumx.radiantcore.org:443` | ✅ live, 401 ms — tip 2 blocks ahead |
 
-Only verified endpoints are tried automatically; the dead ones stay listed so they
-can be picked deliberately in Settings if they return.
+All three are verified, so all three are in the automatic connect order, and two
+distinct operators (`radiant4people.com`, `radiantcore.org`) keep the tip
+cross-check meaningful.
+
+**Removed 2026-11-06.** The three `radiant2/radiantus/radiant4.bladenet.online:50022`
+hosts (all timed out on 50022) and the old `wss://radiantcore.org:50004` entry.
+That host serves WebSocket on **:443** only; `:50004` has no listener at all.
+
+**Ports are not interchangeable.** These servers expose two unrelated services.
+`:50022` and `:443` are ElectrumX-over-WebSocket, which is what the SDK speaks.
+`:50001`, `:50002` and `:50012` are the raw TCP line protocol, and a browser or
+Capacitor WebSocket cannot speak it — the HTTP upgrade simply fails. Concretely, on
+2026-11-06 `electrumx.radiantcore.org:50012` did answer `server.version` over TLS
+while `:50022` was closed, and the endpoint that actually works in the app is
+`wss://electrumx.radiantcore.org:443`. Never add a host just because `:50012`
+answers.
 
 **Testnet was removed.** Every testnet endpoint is gone — `ECONNREFUSED`, or no
 longer resolving — so offering the network only produced a confusing failure. The
 wallet, and its address validation, are mainnet-only. The historical
 `electrum.radiant.ovh` and `electrum.radiantblockchain.org` hosts no longer exist in
-DNS; do not reintroduce them.
+DNS, and `electrumx.radiant.ovh` / `electrumx.radiantexplorer.com` /
+`electrumx2.radiantexplorer.com` serve no WebSocket port (refused, filtered, or a
+plain HTTP 200 that never upgrades). Do not reintroduce any of them.
 
 ## Architecture
 
@@ -516,7 +531,7 @@ shipping.
 | More real sends | One mainnet send succeeded; widen that over time |
 | SPV difficulty rule | Headers, linkage and merkle proofs are verified; the per-block DAA is the last piece |
 | QR **scanning** | Display works; camera scanning does not exist yet |
-| Glyph tokens, WAVE names | Needs `radiantcore.org` endpoints, unreachable when last checked |
+| Glyph tokens, WAVE names | Needs the `radiantcore.org` endpoints — the Electrum one is live again (`wss://electrumx.radiantcore.org:443`), but nothing in this app exercises mint/transfer yet |
 | Keystore key invalidation | Survived in code, but only provable on a device that re-enrols a fingerprint |
 | Play Store | Deliberately shelved — financial apps need an organisation account. See [docs/PUBLISHING.md](docs/PUBLISHING.md) |
 

@@ -568,10 +568,26 @@ if (process.argv.includes("--live")) {
     auto.length === verified.length && auto.every((u) => verified.includes(u)),
     `${auto.length} endpoint(s): ${auto.map((u) => u.replace("wss://", "")).join(", ")}`,
   );
+  const hostOf = (url: string) => url.replace(/^wss:\/\//, "").split(":")[0];
   check(
-    "the dead hosts are still listed for manual selection",
-    servers.SERVERS.mainnet.length > verified.length,
-    `${servers.SERVERS.mainnet.length} known, ${verified.length} auto`,
+    "every endpoint is wss:// on a hostname, never a bare IP",
+    servers.SERVERS.mainnet.every(
+      (s) =>
+        s.url.startsWith("wss://") &&
+        !/^\d{1,3}(\.\d{1,3}){3}$/.test(hostOf(s.url)),
+    ),
+    servers.SERVERS.mainnet.map((s) => hostOf(s.url)).join(", "),
+  );
+
+  // The tip cross-check only proves anything across *distinct* operators, so a
+  // list that has collapsed to one administrator has quietly lost quorum.
+  const operators = new Set(servers.SERVERS.mainnet.map((s) => s.operator));
+  check(
+    "at least two distinct operators remain for the tip cross-check",
+    operators.size >= 2,
+    `${servers.SERVERS.mainnet.length} known, ${operators.size} operator(s): ${[
+      ...operators,
+    ].join(", ")}`,
   );
 
   // Unreachable endpoints must fail fast rather than hang.
