@@ -16,6 +16,11 @@ android/local.properties
 android/keystore.properties
 *.jks
 *.keystore
+# Local working copy of that material, kept next to the project so a botched
+# `git clean`/re-clone does not take the only copy. Ignored as a directory on
+# purpose: a renamed copy of keystore.properties is not matched by the
+# path-specific rule above.
+.signing-backup/
 
 # Standalone installable builds (signed APKs) are local artefacts.
 dist-android/
