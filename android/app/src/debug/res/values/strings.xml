@@ -3,6 +3,6 @@
     <!-- Debug-only overlay: distinct launcher label so a side-by-side debug
          install (applicationIdSuffix ".debug") is easy to tell apart from a
          release install on the same device. -->
-    <string name="app_name">Radiant Wallet Debug</string>
-    <string name="title_activity_main">Radiant Wallet Debug</string>
+    <string name="app_name">Lumen RXD Wallet (dev)</string>
+    <string name="title_activity_main">Lumen RXD Wallet (dev)</string>
 </resources>

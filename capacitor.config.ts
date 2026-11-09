@@ -2,7 +2,7 @@ import type { CapacitorConfig } from "@capacitor/cli";
 
 const config: CapacitorConfig = {
   appId: "org.radiant.wallet",
-  appName: "Radiant Wallet",
+  appName: "Lumen RXD Wallet",
   webDir: "dist",
   android: {
     // The wallet never loads remote content, so mixed content stays off.

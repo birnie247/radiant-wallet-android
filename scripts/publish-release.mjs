@@ -3,7 +3,7 @@
  * Publish the signed APK as a GitHub Release asset, so it can be downloaded and
  * installed directly without cloning the repo.
  *
- *   npm run release           # build + sign → dist-android/radiant-wallet-<v>.apk
+ *   npm run release           # build + sign → dist-android/lumen-rxd-wallet-<v>.apk
  *   npm run publish:release   # create the release and upload that APK
  *
  * Needs a token with `repo` scope in GITHUB_TOKEN. The tag is `v<version>` from
@@ -30,7 +30,7 @@ if (!token) die("GITHUB_TOKEN is not set (needs `repo` scope)");
 
 const { version } = JSON.parse(readFileSync("package.json", "utf8"));
 const tag = `v${version}`;
-const apk = join("dist-android", `radiant-wallet-${version}.apk`);
+const apk = join("dist-android", `lumen-rxd-wallet-${version}.apk`);
 if (!existsSync(apk)) die(`${apk} not found — run \`npm run release\` first`);
 
 const repoSlug = (() => {
@@ -71,7 +71,7 @@ function buildBody() {
     return readFileSync(notesFile, "utf8");
   }
   return [
-    `Signed APK for Radiant Wallet ${version}, ready to sideload.`,
+    `Signed APK for Lumen RXD Wallet ${version}, ready to sideload.`,
     "",
     "## Install",
     "",
@@ -122,7 +122,7 @@ let release;
       body: JSON.stringify({
         tag_name: tag,
         target_commitish: "main",
-        name: `Radiant Wallet ${version}`,
+        name: `Lumen RXD Wallet ${version}`,
         body: buildBody(),
         draft: false,
         prerelease: false,

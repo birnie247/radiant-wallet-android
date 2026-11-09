@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { ElectrumClient, NetworkName } from "@radiant-core/sdk";
-import { deleteVault, unlockVault } from "../lib/vault";
+import { deleteVault, unlockVault, LEGACY_COIN_TYPE, RADIANT_COIN_TYPE } from "../lib/vault";
 import {
   addCustomServer,
   allServers,
@@ -30,6 +30,8 @@ import type { Nav } from "../types";
 export default function Settings({ nav }: { nav: Nav }) {
   const { session } = nav;
   const network = session.secrets.network;
+  /** Coin type this wallet derives with; LEGACY_COIN_TYPE marks a v1 seed. */
+  const coinType = session.secrets.coinType ?? RADIANT_COIN_TYPE;
 
   const [confirmWipe, setConfirmWipe] = useState(false);
   const [revealOpen, setRevealOpen] = useState(false);
@@ -497,15 +499,20 @@ export default function Settings({ nav }: { nav: Nav }) {
         <div className="card tight">
           <div className="row" style={{ paddingTop: 0 }}>
             <div className="grow">
-              <div className="title">Radiant Wallet</div>
+              <div className="title">Lumen RXD Wallet</div>
               <div className="sub">v{__APP_VERSION__} · non-custodial</div>
             </div>
           </div>
           <div className="row">
             <div className="grow">
               <div className="title">Derivation</div>
-              <div className="sub">BIP44 m/44'/512'/account'/change/index</div>
+              <div className="sub">
+                BIP44 m/44&apos;/{coinType}&apos;/account&apos;/change/index
+              </div>
             </div>
+            {coinType === LEGACY_COIN_TYPE && (
+              <span className="pill warn">v1 seed</span>
+            )}
           </div>
           <div className="row">
             <div className="grow">

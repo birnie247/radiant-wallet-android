@@ -59,7 +59,7 @@ function run(label, cmd, args, cwd = ROOT) {
   }
 }
 
-console.log(`Radiant Wallet ${version}  (versionCode ${versionCode})`);
+console.log(`Lumen RXD Wallet ${version}  (versionCode ${versionCode})`);
 
 run("building web assets", process.execPath, ["node_modules/vite/bin/vite.js", "build"]);
 run("syncing Capacitor", process.execPath, [
@@ -98,7 +98,7 @@ if (!existsSync(built)) {
 
 const outDir = path.join(ROOT, "dist-android");
 mkdirSync(outDir, { recursive: true });
-const out = path.join(outDir, `radiant-wallet-${version}.apk`);
+const out = path.join(outDir, `lumen-rxd-wallet-${version}.apk`);
 copyFileSync(built, out);
 const idsig = `${built}.idsig`;
 if (existsSync(idsig)) copyFileSync(idsig, `${out}.idsig`);

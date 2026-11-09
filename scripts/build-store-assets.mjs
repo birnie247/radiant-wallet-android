@@ -74,7 +74,7 @@ const html = `<!doctype html><html><head><meta charset="utf-8"><style>
   <img src="${dataUri(LOGO, "image/png")}">
   <div>
     <div class="eyebrow">Radiant &middot; RXD</div>
-    <h1>Radiant Wallet</h1>
+    <h1>Lumen RXD Wallet</h1>
     <p>Non-custodial. Your keys never leave the device.</p>
   </div>
 </div></body></html>`;

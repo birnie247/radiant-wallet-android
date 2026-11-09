@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Privacy Policy — Radiant Wallet</title>
+    <title>Privacy Policy — Lumen RXD Wallet</title>
     <style>
       :root {
         --bg: #000;
@@ -67,22 +67,24 @@
     <main>
       <header>
         <img class="mark" src="./radiant-mark.png" alt="" aria-hidden="true" />
-        <div class="eyebrow">Radiant Wallet</div>
+        <div class="eyebrow">Lumen RXD Wallet</div>
       </header>
 
       <h1>Privacy Policy</h1>
-      <p class="updated">Last updated: 4 November 2026</p>
+      <p class="updated">Last updated: 8 November 2026</p>
 
       <div class="lede">
-        <strong>The short version:</strong> Radiant Wallet is a self-custody
-        cryptocurrency wallet. It has no accounts, no analytics, no advertising,
-        and no server of its own. Your recovery phrase is created and encrypted
-        on your device and is never transmitted anywhere.
+        <strong>The short version:</strong> Lumen RXD Wallet is a self-custody
+        cryptocurrency wallet. It has no accounts, no analytics, no advertising and
+        no backend. Its only network traffic goes to ElectrumX servers — including
+        a default one run by the developer, which sees your IP and the addresses
+        you query, and which you can replace in Settings. Your recovery phrase is
+        created and encrypted on your device and is never transmitted anywhere.
       </div>
 
       <h2>1. Who this applies to</h2>
       <p>
-        This policy covers the Radiant Wallet Android application
+        This policy covers the Lumen RXD Wallet Android application
         (<code>org.radiant.wallet</code>), published by Birnie ("we", "us"). It
         applies only to that app; it does not cover websites or services you
         reach from it.
@@ -90,10 +92,19 @@
 
       <h2>2. What we collect</h2>
       <p>
-        <strong>Nothing.</strong> We do not operate a backend, and the app
-        contains no analytics, crash-reporting, attribution, or advertising SDKs.
-        We never receive your recovery phrase, your private keys, your balances,
-        or any identifier for you or your device.
+        <strong>Nothing.</strong> The app has no backend: no accounts, no
+        analytics, crash-reporting, attribution or advertising SDKs, and no
+        identifier for you or your device. We never receive your recovery phrase,
+        your private keys, your balances or your passphrase.
+      </p>
+      <p>
+        One nuance, because leaving it out would be dishonest: the app ships with a
+        default ElectrumX endpoint operated by the developer
+        (<code>wss://rxdexplorer.com</code>). Like any Electrum server it sees
+        your IP address and the blockchain addresses the wallet queries — nothing
+        else, and never a key or the phrase. Prefer not to use it? Settings →
+        ElectrumX server lets you switch to another server or add your own, and
+        the choice is remembered on the device.
       </p>
 
       <h2>3. Data stored on your device</h2>
@@ -127,15 +138,17 @@
       <h2>4. Network connections</h2>
       <p>
         To show balances and broadcast transactions, the app talks directly to
-        public <strong>ElectrumX servers</strong> run by third parties (community
-        operators and the Radiant project), over encrypted WebSocket connections.
+        public <strong>ElectrumX servers</strong> — community operators, the
+        Radiant project, and the developer-run default endpoint
+        (<code>rxdexplorer.com</code>) — over encrypted WebSocket connections.
       </p>
       <p>
         Those servers necessarily see your IP address and the blockchain
         addresses you query. That is inherent to how lightweight wallets work, and
-        it is why the app supports switching servers. Their handling of that data
-        is governed by their own policies, not ours. The app does not send your
-        recovery phrase, keys, or passphrase to any server.
+        it is why the app supports switching servers. For the developer-run
+        default endpoint, this policy is the one that applies; the others are
+        governed by their own policies. The app does not send your recovery
+        phrase, keys, or passphrase to any server.
       </p>
       <p>
         <strong>USD prices (optional).</strong> If you leave

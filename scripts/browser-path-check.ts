@@ -39,6 +39,37 @@ check(
   k0.address,
 );
 
+// 1b. The v1 ("legacy") seed path: same phrase, coin type 0. Settings exposes
+//     this as the "This is a v1 seed" checkbox, so a regression here means a
+//     restored old wallet shows an empty balance.
+check(
+  "default coin type is Radiant's 512",
+  wallet.coinType === 512,
+  String(wallet.coinType),
+);
+const legacy = HDWallet.fromMnemonic(MNEMONIC, { network: "mainnet", coinType: 0 });
+const l0 = legacy.deriveKey(0);
+check("v1 seed derives at m/44'/0'/0'/0/0", l0.path === "m/44'/0'/0'/0/0", l0.path);
+check(
+  "v1 and v2 addresses are different for the same phrase",
+  l0.address !== k0.address,
+  l0.address,
+);
+// This is the published address for the BIP39 test vector at m/44'/0'/0'/0/0,
+// so it checks the derivation against an outside reference and not just against
+// our own output.
+check(
+  "v1 address matches the known m/44'/0' vector",
+  l0.address === "1LqBGSKuX5yYUonjxT5qGfpUsXKYYWeabA",
+  l0.address,
+);
+check(
+  "v1 address is still a valid mainnet P2PKH",
+  /^1[1-9A-HJ-NP-Za-km-z]{25,34}$/.test(l0.address) &&
+    p2pkhScript(l0.address).startsWith("76a914"),
+  l0.address,
+);
+
 // 2. CSPRNG (Web Crypto path) — must produce a fresh 12-word mnemonic.
 const generated = HDWallet.generateMnemonic();
 check("generateMnemonic → 12 words", generated.split(" ").length === 12);
@@ -1236,8 +1267,9 @@ if (process.argv.includes("--live")) {
   servers.restoreHiddenServers("mainnet");
 
   // The last endpoint must survive: a wallet with no server can never connect.
-  servers.removeServer("mainnet", curated[1]);
-  servers.removeServer("mainnet", curated[2]);
+  // Remove down to one dynamically, so adding or retiring curated endpoints never
+  // silently turns this into a no-op check again.
+  for (const url of curated.slice(1)) servers.removeServer("mainnet", url);
   let lastGuard = "";
   try {
     servers.removeServer("mainnet", curated[0]);
@@ -1247,7 +1279,7 @@ if (process.argv.includes("--live")) {
   check(
     "the last remaining server cannot be removed",
     lastGuard !== "" && servers.allServers("mainnet").length === 1,
-    lastGuard || "no error thrown",
+    lastGuard || `no error thrown (${servers.allServers("mainnet").length} left)`,
   );
   servers.restoreHiddenServers("mainnet");
 

@@ -90,7 +90,7 @@ Create the app, then complete **App content** (all of it is mandatory):
 
 | Field | Limit | Suggested |
 | --- | --- | --- |
-| App name | 30 chars | `Radiant Wallet` |
+| App name | 30 chars | `Lumen RXD Wallet` |
 | Short description | 80 chars | `Non-custodial wallet for Radiant (RXD). Your keys never leave your device.` |
 | Full description | 4000 chars | Self-custody, Electrum servers, no accounts, no tracking |
 | App icon | 512×512 | `play/store/icon-512.png` |

@@ -53,10 +53,25 @@ export interface ServerEntry {
 }
 
 /**
- * Last live probe: 2026-11-06 (`npm run probe`). All three mainnet endpoints
+ * Last live probe: 2026-11-08 (`npm run probe`). All four mainnet endpoints
  * below completed a `server.version` handshake and reported Radiant's genesis
- * hash, with tips of 479,536 / 479,536 / 479,538 — the radiantcore.org peer was
- * two blocks ahead, so none of them is stale.
+ * hash. On 2026-11-06 the tips were 479,536 / 479,536 / 479,538 — the
+ * radiantcore.org peer was two blocks ahead, so none of them was stale.
+ *
+ * `wss://rxdexplorer.com` is deliberately FIRST: it is the default a fresh
+ * install lands on, so it is the endpoint most users will actually talk to. On
+ * 2026-11-08 it answered in 315 ms as `ElectrumX 1.4.1` at height 480,110, with
+ * a valid Let's Encrypt certificate (CN=rxdexplorer.com, SANs rxdexplorer.com
+ * and www.rxdexplorer.com, chain verified, expires 2027-02-05) and a
+ * `genesis_hash` equal to {@link GENESIS_HASH} in spv.ts. It listens on :443
+ * only — `:50022` times out.
+ *
+ * It is operated by this wallet's maintainer, so its `operator` value is a known
+ * fact rather than the hostname guess used for user-added servers. That is also
+ * why the tip cross-check still earns its keep: this server is compared against
+ * `radiant4people.com` and `radiantcore.org`, neither of which the maintainer
+ * has any part in. A user who wants to trust nothing connected to this project
+ * should press Use on one of those two in Settings.
  *
  * Removed on 2026-11-06:
  *   • `radiant2/radiantus/radiant4.bladenet.online:50022` — all three timed out.
@@ -70,6 +85,11 @@ export interface ServerEntry {
  */
 export const SERVERS: Record<NetworkName, ServerEntry[]> = {
   mainnet: [
+    {
+      url: "wss://rxdexplorer.com",
+      operator: "rxdexplorer.com",
+      verified: true,
+    },
     {
       url: "wss://electrumx.radiant4people.com:50022",
       operator: "radiant4people.com",

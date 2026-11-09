@@ -8,6 +8,7 @@ import WebSocket from "ws";
 // WebSocket. Only a port that completes the HTTP upgrade *and* answers JSON-RPC
 // counts as live here.
 const MAINNET = [
+  "wss://rxdexplorer.com",
   "wss://electrumx.radiant4people.com:50022",
   "wss://electrumx2.radiant4people.com:50022",
   "wss://electrumx.radiantcore.org:443",

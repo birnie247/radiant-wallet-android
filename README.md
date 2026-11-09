@@ -1,4 +1,4 @@
-# Radiant Wallet — non-custodial RXD for Android
+# Lumen RXD Wallet — non-custodial RXD for Android
 
 A self-custody wallet for the [Radiant](https://radiantblockchain.org) (RXD)
 blockchain. The recovery phrase is generated, encrypted and used to sign
@@ -11,7 +11,7 @@ ecosystem's own proven code rather than a re-implementation.
 
 |  |  |
 | --- | --- |
-| Version | 1.0.13 |
+| Version | 1.1.0 |
 | Licence | MIT, with Apache-2.0 artwork |
 | Android | minSdk 26 · targetSdk 36 |
 | Chain access | ElectrumX over WebSocket |
@@ -24,7 +24,7 @@ ecosystem's own proven code rather than a re-implementation.
 [Known issues and roadmap](#known-issues-and-roadmap) · [Licence](#licence)
 
 > **Just want the app?** Download
-> [`radiant-wallet-1.0.13.apk`](https://github.com/birnie247/radiant-wallet-android/releases/latest)
+> [`lumen-rxd-wallet-1.1.0.apk`](https://github.com/birnie247/radiant-wallet-android/releases/latest)
 > from Releases and tap it. Read [Before you trust it](#limitations) first — this is
 > unaudited software handling real money.
 
@@ -38,6 +38,7 @@ The distinction this repo keeps coming back to is **verified** versus **assumed*
 | Area | Status |
 | --- | --- |
 | Create wallet (BIP39 12-word) and restore 12–24 words | ✅ verified |
+| Restore a **v1 seed** (pre-coin-type derivation, `m/44'/0'`) | ✅ implemented behind an explicit checkbox |
 | Seed encrypted at rest (AES-256-GCM, PBKDF2-SHA256 600k, 12-char minimum) | ✅ implemented |
 | BIP44 discovery, gap limit 20, receive + change chains | ✅ verified |
 | Balance, UTXOs and history over ElectrumX | ✅ verified against mainnet |
@@ -53,6 +54,7 @@ The distinction this repo keeps coming back to is **verified** versus **assumed*
 | USD value of the balance | ✅ live API verified, opt-out |
 | Mainnet only | ✅ testnet removed — every testnet endpoint is dead |
 | Add / remove your own ElectrumX server | ✅ implemented; live add + handshake test verified on device |
+| Default server independent of this project | ❌ the default (`rxdexplorer.com`) is the maintainer's own box — tap Use on another server for full independence |
 | QR scanning · Glyph tokens · WAVE names | ❌ not implemented |
 
 > **On broadcast:** the first funded transaction was sent with this build and
@@ -84,9 +86,9 @@ checked before installing.
 
 ```powershell
 npm run release      # web build → cap sync → signed APK → signature verified
-# → dist-android/radiant-wallet-<version>.apk
+# → dist-android/lumen-rxd-wallet-<version>.apk
 
-C:\Android\Sdk\platform-tools\adb.exe install -r "dist-android\radiant-wallet-1.0.10.apk"
+C:\Android\Sdk\platform-tools\adb.exe install -r "dist-android\lumen-rxd-wallet-1.1.0.apk"
 ```
 
 
@@ -316,6 +318,27 @@ or burns tokens.
 | Signing | `SIGHASH_ALL \| FORKID` = `0x41` |
 | Node P2P port | 7333 |
 
+### v1 seeds (restoring an older wallet)
+
+A coin type is part of the derivation path, so the *same* BIP39 phrase produces a
+completely different address set under `m/44'/0'` than under `m/44'/512'`. Seeds
+made before Radiant's coin type existed were derived with **0**, and the SDK's
+`HDWalletOptions.coinType` documents exactly that switch: *"Pass 0 only to
+recover legacy wallets created before the coin-type-512 default."*
+
+The restore screen therefore has a **“This is a v1 seed”** checkbox:
+
+- unticked (default) → `m/44'/512'` — every wallet this app creates;
+- ticked → `m/44'/0'` — the old scheme, stored as `coinType: 0` in the vault so
+  every later unlock derives identically (inferring it instead would silently
+  break the wallet on the next launch);
+- Settings → About shows the live path plus a `v1 seed` badge, so a restored
+  wallet never leaves you guessing which scheme it uses.
+
+Ticking it for a modern seed shows an empty wallet, and leaving it unticked for a
+v1 seed does the same — the flag is the difference between “restored” and
+“restored, then found its funds”.
+
 ### Refs: where a naive wallet burns tokens
 
 A UTXO holding a Glyph FT/NFT carries an `OP_PUSHINPUTREF`-family opcode
@@ -336,17 +359,30 @@ invalid signatures. `buildPayment` builds both in one pass so they cannot drift,
 
 ### Servers
 
-Last live probe **2026-11-06** (`npm run probe`):
+Last live probe **2026-11-08** (`npm run probe`):
 
 | Endpoint | Status |
 | --- | --- |
+| `rxdexplorer.com:443` | ✅ live, 315 ms — **the default a fresh install connects to** |
 | `electrumx.radiant4people.com:50022` | ✅ live, 639 ms |
 | `electrumx2.radiant4people.com:50022` | ✅ live, 751 ms |
-| `electrumx.radiantcore.org:443` | ✅ live, 401 ms — tip 2 blocks ahead |
+| `electrumx.radiantcore.org:443` | ✅ live, 401 ms |
 
-All three are verified, so all three are in the automatic connect order, and two
-distinct operators (`radiant4people.com`, `radiantcore.org`) keep the tip
-cross-check meaningful.
+All four are verified, so all four are in the automatic connect order, and three
+distinct operators (`rxdexplorer.com`, `radiant4people.com`, `radiantcore.org`)
+keep the tip cross-check meaningful. `rxdexplorer.com` sits first in
+`SERVERS.mainnet` because it is the default: 315 ms as `ElectrumX 1.4.1`, tip
+480,110, a valid Let's Encrypt certificate whose `genesis_hash` matched the
+pinned one exactly.
+
+**The default is the maintainer's own server.** `rxdexplorer.com` is run by the
+author of this wallet, which is a deliberate choice (it is the fastest endpoint
+here and it is ours to keep honest) but it is worth stating plainly: a fresh
+install hands its address cluster, and its IP, to the project's own box. The tip
+cross-check compares it against `radiant4people.com` and `radiantcore.org`, two
+operators the maintainer has no part in, so quorum still means something. If you
+would rather trust nothing connected to this project, tap **Use** on either of
+those in Settings → ElectrumX server; the choice is remembered.
 
 **Removed 2026-11-06.** The three `radiant2/radiantus/radiant4.bladenet.online:50022`
 hosts (all timed out on 50022) and the old `wss://radiantcore.org:50004` entry.
@@ -359,7 +395,8 @@ Capacitor WebSocket cannot speak it — the HTTP upgrade simply fails. Concretel
 2026-11-06 `electrumx.radiantcore.org:50012` did answer `server.version` over TLS
 while `:50022` was closed, and the endpoint that actually works in the app is
 `wss://electrumx.radiantcore.org:443`. Never add a host just because `:50012`
-answers.
+answers. `rxdexplorer.com` is the same story: `:443` answers WebSocket, `:50022`
+times out.
 
 **Your own servers.** Settings → ElectrumX server lets you add an endpoint and
 remove any entry, built-in or your own. The rules, and why:
@@ -491,7 +528,7 @@ debug APK and uploads it as an artifact.
 
 ```powershell
 npm version patch      # 1.0.10 → 1.0.11
-npm run release        # → dist-android/radiant-wallet-1.0.11.apk
+npm run release        # → dist-android/lumen-rxd-wallet-1.1.0.apk
 ```
 
 `npm run release` builds the web assets, syncs Capacitor, produces a *signed*
