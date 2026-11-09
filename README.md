@@ -11,7 +11,7 @@ ecosystem's own proven code rather than a re-implementation.
 
 |  |  |
 | --- | --- |
-| Version | 1.1.0 |
+| Version | 1.1.1 |
 | Licence | MIT, with Apache-2.0 artwork |
 | Android | minSdk 26 · targetSdk 36 |
 | Chain access | ElectrumX over WebSocket |
@@ -24,7 +24,7 @@ ecosystem's own proven code rather than a re-implementation.
 [Known issues and roadmap](#known-issues-and-roadmap) · [Licence](#licence)
 
 > **Just want the app?** Download
-> [`lumen-rxd-wallet-1.1.0.apk`](https://github.com/birnie247/radiant-wallet-android/releases/latest)
+> [`lumen-rxd-wallet-1.1.1.apk`](https://github.com/birnie247/radiant-wallet-android/releases/latest)
 > from Releases and tap it. Read [Before you trust it](#limitations) first — this is
 > unaudited software handling real money.
 
@@ -88,7 +88,7 @@ checked before installing.
 npm run release      # web build → cap sync → signed APK → signature verified
 # → dist-android/lumen-rxd-wallet-<version>.apk
 
-C:\Android\Sdk\platform-tools\adb.exe install -r "dist-android\lumen-rxd-wallet-1.1.0.apk"
+C:\Android\Sdk\platform-tools\adb.exe install -r "dist-android\lumen-rxd-wallet-1.1.1.apk"
 ```
 
 
@@ -528,7 +528,7 @@ debug APK and uploads it as an artifact.
 
 ```powershell
 npm version patch      # 1.0.10 → 1.0.11
-npm run release        # → dist-android/lumen-rxd-wallet-1.1.0.apk
+npm run release        # → dist-android/lumen-rxd-wallet-1.1.1.apk
 ```
 
 `npm run release` builds the web assets, syncs Capacitor, produces a *signed*
