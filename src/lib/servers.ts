@@ -523,13 +523,16 @@ export function autoCandidates(
 }
 
 /**
- * Endpoints run by a DIFFERENT operator than `endpoint` — the only ones useful
- * for an independent cross-check. Verified endpoints are ordered first, but
- * unverified ones are included: a cross-check only compares chain heights, it
- * never trusts the peer's data. Including them means the check can still detect
- * disagreement when the curated peers are offline. If every candidate is down
- * the check simply returns null and no warning is shown (better than a false
- * alarm).
+ * Endpoints run by a DIFFERENT operator than `endpoint` — the raw pool for an
+ * independent cross-check. Verified endpoints are ordered first, but unverified
+ * ones are included: a cross-check only compares chain heights, it never trusts
+ * the peer's data. Including them means the check can still detect disagreement
+ * when the curated peers are offline. If every candidate is down the check simply
+ * returns null and no warning is shown (better than a false alarm).
+ *
+ * Note this returns *every* endpoint from those operators, so two hosts behind
+ * one administrator both appear. Use {@link crossCheckCandidates} when you need
+ * independent opinions rather than a list of alternatives.
  */
 export function independentServers(
   network: NetworkName,
@@ -544,6 +547,33 @@ export function independentServers(
     ...others.filter((s) => s.verified),
     ...others.filter((s) => !s.verified),
   ];
+}
+
+/**
+ * Up to `limit` peers for a tip cross-check, each from a DIFFERENT operator —
+ * different from the primary's and from each other's.
+ *
+ * Taking the first N of {@link independentServers} is not quorum, it is a list:
+ * with `rxdexplorer.com` as the default primary, the first two candidates are
+ * both `radiant4people.com` entries, so a failure on the first bought nothing on
+ * the second — the same administrator simply answered twice. Deduping by operator
+ * makes the second peer an actual second opinion, which is the whole point of the
+ * check (security report MEDIUM-2).
+ */
+export function crossCheckCandidates(
+  network: NetworkName,
+  endpoint: string,
+  limit = 2,
+): ServerEntry[] {
+  const picked: ServerEntry[] = [];
+  const operators = new Set<string>();
+  for (const entry of independentServers(network, endpoint)) {
+    if (operators.has(entry.operator)) continue;
+    operators.add(entry.operator);
+    picked.push(entry);
+    if (picked.length >= limit) break;
+  }
+  return picked;
 }
 
 /**

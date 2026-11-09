@@ -590,6 +590,30 @@ if (process.argv.includes("--live")) {
   const walletLib = await import("../src/lib/wallet");
   const servers = await import("../src/lib/servers");
 
+  // MEDIUM-2 quorum: the tip cross-check only proves anything across DISTINCT
+  // operators. Two hosts behind one administrator are one opinion, so the
+  // selector must never hand back the same operator twice — which is exactly what
+  // taking the first two of independentServers() did once rxdexplorer.com (the
+  // maintainer's own server) became the default primary.
+  const curated = servers.SERVERS.mainnet;
+  const fromDefault = servers.crossCheckCandidates("mainnet", curated[0].url);
+  check(
+    "cross-check peers come from distinct operators",
+    fromDefault.length === 2 &&
+      new Set(fromDefault.map((p) => p.operator)).size === 2 &&
+      !fromDefault.some((p) => p.operator === curated[0].operator),
+    fromDefault.map((p) => `wss://${p.operator}`).join(" + "),
+  );
+  const fromCore = servers.crossCheckCandidates(
+    "mainnet",
+    "wss://electrumx.radiantcore.org:443",
+  );
+  check(
+    "two hosts of one administrator count as one peer",
+    fromCore.filter((p) => p.operator === "radiant4people.com").length === 1,
+    fromCore.map((p) => p.operator).join(" + "),
+  );
+
   const verified = servers.SERVERS.mainnet
     .filter((s) => s.verified)
     .map((s) => s.url);
