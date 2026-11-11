@@ -72,6 +72,22 @@ Play requires an **AAB** for new apps — not an APK. Bump `versionCode` in
 
 Play will not accept the listing without a public URL.
 
+Two files to publish, or one if you use the bundled copy:
+
+| File | Note |
+| --- | --- |
+| `docs/privacy-policy.html` | the source page; it references `docs/radiant-mark.png` |
+| `docs/radiant-mark.png` | the logo that page loads — post both, or the header image 404s |
+| `docs/privacy-policy-standalone.html` | the same page with the logo inlined as a data URI — **one file, nothing else needed** |
+
+Hosting on the domain you already run is the least work and looks best in the
+listing: drop the standalone file on the web host and point Play at it, e.g.
+`https://rxdexplorer.com/lumen/privacy-policy.html`. No DNS change is required for
+a path on an existing hostname.
+
+If you would rather use GitHub Pages, note that **Pages is not enabled on this
+repository yet**:
+
 GitHub → **Settings → Pages → Source: Deploy from a branch → `main` / `/docs`**
 
 Your policy then lives at:
@@ -79,6 +95,9 @@ Your policy then lives at:
 ```
 https://birnie247.github.io/radiant-wallet-android/privacy-policy.html
 ```
+
+A `lumen.rxdexplorer.com` subdomain would need one DNS record (CNAME to
+`birnie247.github.io` for Pages, or A/AAAA to your own host).
 
 The page is accurate as written **as of 1.1.1**: no backend, no analytics, and one
 developer-run default ElectrumX endpoint (`rxdexplorer.com`) which sees the user's IP
