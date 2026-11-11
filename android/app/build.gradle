@@ -21,10 +21,10 @@ if (keystorePropsFile.exists()) {
 }
 
 android {
-    namespace = "org.radiant.wallet"
+    namespace = "com.rxdexplorer.lumen"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "org.radiant.wallet"
+        applicationId "com.rxdexplorer.lumen"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         // Single source of truth for the version: package.json.

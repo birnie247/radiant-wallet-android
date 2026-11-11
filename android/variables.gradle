@@ -1,7 +1,10 @@
 ext {
-    // BigInt (used for photon amounts and tx values) requires a modern WebView;
-    // API 26 is a pragmatic floor that also guarantees AES-GCM WebCrypto.
-    minSdkVersion = 26
+    // BigInt (used for photon amounts and tx values) requires a modern WebView.
+    // API 26 was the old floor; 28 is the current one because API 26-27 devices
+    // ship a WebView that can be old enough to lack BigInt, which turns into the
+    // "failed to start" screen rather than a working wallet. Android 9 also means
+    // USE_BIOMETRIC alone is enough (no framework FingerprintManager fallback).
+    minSdkVersion = 28
     compileSdkVersion = 36
     targetSdkVersion = 36
     androidxActivityVersion = '1.11.0'

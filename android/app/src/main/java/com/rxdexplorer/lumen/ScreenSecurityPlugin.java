@@ -1,4 +1,4 @@
-package org.radiant.wallet;
+package com.rxdexplorer.lumen;
 
 import android.view.WindowManager;
 

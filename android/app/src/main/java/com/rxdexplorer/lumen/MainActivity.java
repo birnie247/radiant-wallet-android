@@ -1,4 +1,4 @@
-package org.radiant.wallet;
+package com.rxdexplorer.lumen;
 
 import android.os.Bundle;
 import android.webkit.WebSettings;

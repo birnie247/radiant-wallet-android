@@ -1,4 +1,4 @@
-package org.radiant.wallet;
+package com.rxdexplorer.lumen;
 
 import android.content.Intent;
 import android.net.Uri;

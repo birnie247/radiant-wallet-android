@@ -11,11 +11,11 @@ ecosystem's own proven code rather than a re-implementation.
 
 |  |  |
 | --- | --- |
-| Version | 1.1.1 |
+| Version | 1.2.0 |
 | Licence | MIT, with Apache-2.0 artwork |
-| Android | minSdk 26 · targetSdk 36 |
+| Android | minSdk 28 · targetSdk 36 |
 | Chain access | ElectrumX over WebSocket |
-| Distribution | signed APK, sideloaded |
+| Distribution | signed APK from Releases; Play Store once accepted |
 
 **Contents:** [Status](#status) · [Quick start](#quick-start) ·
 [Install and update](#install-and-update) · [How it works](#how-it-works) ·
@@ -78,9 +78,15 @@ emulator — Web Crypto and WebSocket both work over `localhost`.
 **Easiest:** grab the APK from
 [**Releases**](https://github.com/birnie247/radiant-wallet-android/releases/latest),
 copy it to the phone, tap it, and allow "install unknown apps" for whichever app opens
-it (Files, Chrome, Drive). Android 8.0+ (minSdk 26), package `org.radiant.wallet`.
+it (Files, Chrome, Drive). Android 9+ (minSdk 28), package `com.rxdexplorer.lumen`.
 Each release lists the size and SHA-256 of the exact bytes, so a download can be
 checked before installing.
+
+**Channel policy.** Releases here are the primary channel until the Play listing is
+accepted; after that, Play becomes the primary and these APKs stop. The two cannot
+be mixed on one device anyway — Play re-signs the app with a Google-held key, so
+Android treats the Play build and this APK as different signers of one package.
+Pick a channel and stay on it.
 
 **Build it yourself —**
 
@@ -599,7 +605,7 @@ shipping.
   `check:smoke`.
 - Install over the previous build and confirm `firstInstallTime` is unchanged, which
   proves the wallet survived:
-  `adb shell dumpsys package org.radiant.wallet | Select-String firstInstallTime`
+  `adb shell dumpsys package com.rxdexplorer.lumen | Select-String firstInstallTime`
 
 ## Known issues and roadmap
 

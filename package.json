@@ -1,6 +1,6 @@
 {
   "name": "rxd-wallet",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "private": true,
   "license": "MIT",
   "type": "module",
@@ -17,6 +17,7 @@
     "icons": "node scripts/build-icons.mjs",
     "store:assets": "node scripts/build-store-assets.mjs",
     "release": "node scripts/release.mjs",
+    "bundle": "node scripts/bundle-release.mjs",
     "publish:release": "node scripts/publish-release.mjs",
     "check:live": "node scripts/live-e2e.mjs",
     "probe": "node scripts/probe-servers.mjs"
