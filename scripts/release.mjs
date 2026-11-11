@@ -145,5 +145,13 @@ if (!apksignerJar) {
 
 const sizeMb = (readFileSync(out).length / (1024 * 1024)).toFixed(2);
 console.log(`\n✓ ${path.relative(ROOT, out)}  (${sizeMb} MB, versionCode ${versionCode})`);
-console.log(`\nInstall over the existing app (keeps your wallet):`);
-console.log(`  ${path.join(ANDROID_HOME, "platform-tools", "adb.exe")} install -r "${out}"`);
+console.log(`\nInstall:`);
+console.log(
+  `  ${path.join(ANDROID_HOME, "platform-tools", "adb.exe")} install -r "${out}"`,
+);
+console.log(
+  `  Same package id as the previous release → updates in place, wallet survives.`,
+);
+console.log(
+  `  A release that changes applicationId needs an uninstall of the old app first.`,
+);
