@@ -45,6 +45,7 @@ import {
   estimateTokenSendFee,
   sendWholeToken,
   sendFtAmount,
+  tokenScriptHashesFor,
 } from "../src/lib/glyphs";
 import type { ScanResult, ScannedAddress } from "../src/lib/wallet";
 
@@ -352,12 +353,33 @@ if (!BROADCAST) {
     ok(`BROADCAST txid ${sent.txid}`);
     info(`ref ${sent.ref} sent ${sent.sent}`);
     info(`explorer: https://rxdexplorer.com/tx/${sent.txid}`);
-    await new Promise((r) => setTimeout(r, 3000));
-    const after = await scanTokens(client, addresses, { withMetadata: false });
-    const still = after.tokens.find((t) => t.ref === token.ref);
-    if (token.kind === "nft" && !still) ok("NFT no longer in wallet — transfer confirmed on-chain");
-    else if (token.kind === "ft") info(`FT balance now ${still ? still.amount : 0n}`);
-    else fail("NFT still present after broadcast — check the explorer");
+    // Authoritative check #1: the ACCEPTED transaction must carry a token
+    // output bound to the destination. This is immediate and independent of
+    // any server indexing lag (getHistory can trail the UTXO index).
+    const rawSent = await client.getTransaction(sent.txid, false).catch(() => null);
+    let txOk = false;
+    if (typeof rawSent === "string") {
+      const stx = new radiantjs.Transaction(rawSent);
+      txOk = stx.outputs.some((o: any) => {
+        const s = o.script.toHex();
+        return s === nftScript(dest, token.ref) || s === ftScript(dest, token.ref);
+      });
+    }
+    if (txOk) ok("accepted tx carries a token output bound to the destination — send is correct");
+    else fail("accepted tx has no token output for the destination — check the explorer");
+
+    // Authoritative check #2: poll the destination's ZEROED-ref UTXO index
+    // (not getHistory, which lags) until the token output appears there.
+    const destHashes = tokenScriptHashesFor(dest);
+    const destHash = token.kind === "nft" ? destHashes[0].hash : destHashes[1].hash;
+    let indexed = false;
+    for (let i = 0; i < 6 && !indexed; i++) {
+      await new Promise((r) => setTimeout(r, 2000));
+      const rows = await client.listUnspent(destHash).catch(() => []);
+      if (rows.length > 0) indexed = true;
+    }
+    if (indexed) ok("token UTXO indexed at the destination's zeroed-ref scripthash — confirmed on-chain");
+    else fail("token UTXO not yet indexed at the destination after 12s — check the explorer");
   } catch (e) {
     fail("broadcast failed: " + (e as Error).message);
   }
