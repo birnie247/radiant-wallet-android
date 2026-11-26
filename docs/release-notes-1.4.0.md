@@ -66,20 +66,31 @@ Download `lumen-rxd-wallet-1.4.0.apk` below and tap it, or:
 adb install -r lumen-rxd-wallet-1.4.0.apk
 ```
 
-Requires **Android 9+** (minSdk 28). 1.4.0 is signed by the same key as 1.3.x, so
-it installs straight over it and your wallet survives.
+Requires **Android 9+** (minSdk 28).
+
+> **Signing key changed back to the original — read before updating.** This
+> 1.4.0 build is signed with the *original* Radiant Wallet key
+> (`226f0d84…725a7d`, the one that signed 1.0.13–1.2.0), **not** the key used for
+> 1.3.0 / 1.3.1 / the first 1.4.0 upload (`84f7a01f…f1075e56`).
+>
+> - **On 1.2.0 or older?** It installs straight over your app and your wallet
+>   survives.
+> - **On 1.3.0 / 1.3.1 / the earlier 1.4.0?** Android refuses the update because
+>   the signing certificate differs. You must **uninstall first** — which
+>   **erases the local vault** — then install this build and **restore from your
+>   recovery phrase**. Have your 12/24 words in hand before you uninstall.
 
 ## Verify what you downloaded
 
 | | |
 | --- | --- |
 | File | `lumen-rxd-wallet-1.4.0.apk` |
-| Size | 2,191,931 bytes (2.09 MB) |
-| SHA-256 | `b4db95df7c51bbebc922ffc8da6876f90c4b6ace119628b3887a560c043e4b3f` |
+| Size | 2,191,927 bytes (2.09 MB) |
+| SHA-256 | `e588a52d87abcb01f76174e84aa43272bff347a60400021005ab27bdb0705315` |
 | versionName / Code | 1.4.0 / 10400 |
 | Package | `com.rxdexplorer.lumen` |
-| Signed by | `CN=Birnie, O=Lumen RXD Wallet, C=CA` |
-| Cert SHA-256 | `84f7a01f0e4987f28354767e2c3dc53284fec1a033864bc39b982b28f1075e56` (same as 1.3.0/1.3.1) |
+| Signed by | `CN=Birnie, O=Radiant Wallet, C=CA` |
+| Cert SHA-256 | `226f0d84348ee46a80d5bb919fa3564e00222785071565584028d6206d725a7d` (original key, same as 1.0.13–1.2.0) |
 | Scheme | APK Signature **v3** |
 
 ```bash
@@ -94,10 +105,10 @@ apksigner verify --print-certs lumen-rxd-wallet-1.4.0.apk
 | | |
 | --- | --- |
 | File | `lumen-rxd-wallet-1.4.0.aab` |
-| Size | 2,131,154 bytes (2.03 MB) |
-| SHA-256 | `c19a8acb7813dcb42604d26b6574f1ee09192d52d6a3a84ad8cfb90c5dd6af8a` |
+| Size | 2,131,153 bytes (2.03 MB) |
+| SHA-256 | `6b22c7072d4f1a376562a2fdc620a52d544cef01e754c621c613b29863f93cbb` |
 | versionCode | 10400 |
-| Upload key | `84f7a01f…f1075e56` (Play re-signs with its app-signing key) |
+| Upload key | `226f0d84…725a7d` (original key; Play re-signs with its app-signing key) |
 
 ## Privacy — unchanged
 
