@@ -45,3 +45,4 @@ dom*.html
 .DS_Store
 Thumbs.db
 dist-test-glyph/
+dist-test-glyph-send/
