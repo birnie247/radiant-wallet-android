@@ -3,6 +3,7 @@ import type { WalletSecrets } from "./lib/vault";
 import type { ScanResult } from "./lib/wallet";
 import type { HistoryEntry } from "./lib/history";
 import type { PriceResult } from "./lib/price";
+import type { TokenBalance } from "./lib/glyphs";
 
 /** An unlocked, connected wallet. Lives only in memory. */
 export interface Session {
@@ -11,9 +12,24 @@ export interface Session {
   client: ElectrumClient;
   endpoint: string;
   scan: ScanResult;
+  /** Glyph token balances, grouped by ref. Empty when the wallet owns none. */
+  tokens: TokenBalance[];
+  /** True while the background token scan is running. */
+  tokensScanning: boolean;
+  /** True when the last token scan failed (stale list shown as-is). */
+  tokensError: boolean;
+  /** Sum of RXD photons locked up inside token UTXOs across all tokens. */
+  lockedPhotons: bigint;
 }
 
-export type Screen = "home" | "receive" | "send" | "settings";
+export type Screen =
+  | "home"
+  | "receive"
+  | "send"
+  | "settings"
+  | "tokens"
+  | "tokenDetail"
+  | "tokenSend";
 
 /** Navigation + wallet handles handed to every screen. */
 export interface Nav {
@@ -61,6 +77,16 @@ export interface Nav {
    * a wrong one throws before anything on screen changes.
    */
   switchDerivation: (coinType: number, passphrase: string) => Promise<void>;
+  /** Glyph token balances, grouped by ref (identity — never name/ticker). */
+  tokens: TokenBalance[];
+  tokensScanning: boolean;
+  tokensError: boolean;
+  /** RXD photons locked inside token UTXOs; excluded from spending. */
+  lockedPhotons: bigint;
+  /** Open a token's detail screen. */
+  openToken: (token: TokenBalance) => void;
+  /** Open the send-token flow for this token. */
+  openTokenSend: (token: TokenBalance) => void;
   /**
    * Background time allowed before the wallet locks itself. 0 locks the moment
    * the app leaves the foreground, so returning always asks for a biometric or

@@ -790,3 +790,101 @@ button.row-button:active {
   border: none;
   margin: 2px 0;
 }
+
+/* ---------------- glyph tokens ---------------- */
+
+/* Three-way Home actions (Send / Receive / Tokens). */
+.actions.trio {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.token-icon {
+  flex: 0 0 auto;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  border: 1px solid var(--line);
+  background: var(--bg-elev-2);
+  display: block;
+}
+
+.token-icon-fallback {
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  color: var(--accent);
+  background: var(--accent-08);
+  border-color: var(--accent-25);
+}
+
+.token-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.token-head {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.token-head-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.token-name {
+  font-weight: 700;
+  font-size: 19px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.token-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.token-amount {
+  font-size: 22px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.token-amount .balance-label {
+  margin-bottom: 2px;
+}
+
+.token-desc {
+  font-size: 14px;
+  color: var(--text-body);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.token-attrs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.token-attr {
+  font-size: 12px;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text-body);
+  overflow-wrap: anywhere;
+}
+
+.token-attr b {
+  color: var(--text-faint);
+  font-weight: 600;
+}

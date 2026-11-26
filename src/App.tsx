@@ -6,6 +6,7 @@ import { getPreferredServer } from "./lib/servers";
 import { loadHistory, type HistoryEntry } from "./lib/history";
 import { syncChain, verifyTransaction, type ChainResult } from "./lib/spv";
 import { watchWalletAddresses, type WatchHandle } from "./lib/liveUpdates";
+import { scanTokens, type TokenBalance } from "./lib/glyphs";
 import {
   fetchRxdUsd,
   loadFiatEnabled,
@@ -27,6 +28,9 @@ import Home from "./screens/Home";
 import Receive from "./screens/Receive";
 import Send from "./screens/Send";
 import Settings from "./screens/Settings";
+import Tokens from "./screens/Tokens";
+import TokenDetail from "./screens/TokenDetail";
+import TokenSend from "./screens/TokenSend";
 
 /** L1: screenshots are blocked app-wide unless the user opts out. */
 const ALLOW_SCREENSHOTS_KEY = "rxd.security.allowScreenshots";
@@ -58,6 +62,17 @@ export default function App() {
       return false;
     }
   });
+
+  /** Glyph token balances (identity = ref), refreshed in the background. */
+  const [tokens, setTokens] = useState<TokenBalance[]>([]);
+  const [tokensScanning, setTokensScanning] = useState(false);
+  const [tokensError, setTokensError] = useState(false);
+  /** RXD photons locked inside token UTXOs — reported separately from RXD. */
+  const [lockedPhotons, setLockedPhotons] = useState<bigint>(0n);
+  /** Token opened on the detail/send screens, kept in sync across re-scans. */
+  const [selectedToken, setSelectedToken] = useState<TokenBalance | null>(null);
+  /** Drops results from superseded token scans (slow older run must lose). */
+  const tokenEpochRef = useRef(0);
 
   /** How long the app may sit in the background before it locks itself. */
   const [autoLockMs, setAutoLockMsState] = useState<number>(loadAutoLockMs);
@@ -218,6 +233,47 @@ export default function App() {
     }
   }, [verifySpv]);
 
+  /**
+   * Read the Glyph token indexes for the scanned addresses.
+   *
+   * Strictly background work: a failing token index must never affect
+   * balances or spending, so errors keep the previous list and only set the
+   * stale flag. An epoch counter discards results from superseded runs, since
+   * the 60s poll plus burst pushes can stack several scans.
+   */
+  const hydrateTokens = useCallback(async (next: Session) => {
+    const epoch = ++tokenEpochRef.current;
+    setTokensScanning(true);
+    try {
+      const result = await scanTokens(next.client, next.scan.addresses);
+      if (epoch !== tokenEpochRef.current) return;
+      setTokens(result.tokens);
+      setTokensError(false);
+      setLockedPhotons(result.lockedPhotons);
+      // Keep any open detail/send screen pointing at the fresh balance of the
+      // same artifact; a token that left the wallet closes nothing — the screen
+      // re-renders with the new (possibly empty) view on next action.
+      setSelectedToken((cur) =>
+        cur ? result.tokens.find((t) => t.ref === cur.ref) ?? null : null,
+      );
+    } catch {
+      if (epoch !== tokenEpochRef.current) return;
+      setTokensError(true);
+    } finally {
+      if (epoch === tokenEpochRef.current) setTokensScanning(false);
+    }
+  }, []);
+
+  const openToken = useCallback((token: TokenBalance) => {
+    setSelectedToken(token);
+    setScreen("tokenDetail");
+  }, []);
+
+  const openTokenSend = useCallback((token: TokenBalance) => {
+    setSelectedToken(token);
+    setScreen("tokenSend");
+  }, []);
+
   /** One scan at a time; push notifications arrive in bursts. */
   const scanningRef = useRef(false);
   /** Active push subscriptions for this unlocked session. */
@@ -243,6 +299,9 @@ export default function App() {
         next.client,
         next.scan.addresses,
         () => onPushRef.current(),
+        // Also subscribe to the zeroed-ref token scripthashes so incoming
+        // Glyphs trigger the same live re-scan as ordinary payments.
+        { includeTokens: true },
       );
     } catch {
       /* ignore — the poll covers it */
@@ -272,17 +331,29 @@ export default function App() {
         onProgress: setBusy,
       });
 
-      const next: Session = { secrets, wallet, client, endpoint, scan };
+      const next: Session = {
+        secrets,
+        wallet,
+        client,
+        endpoint,
+        scan,
+        // Token fields start empty; hydrateTokens fills them in the background.
+        tokens: [],
+        tokensScanning: false,
+        tokensError: false,
+        lockedPhotons: 0n,
+      };
       setSession(next);
       setScreen("home");
       void hydrateHistory(next);
       void hydratePrice();
+      void hydrateTokens(next);
       // Subscribe to pushes so the balance keeps itself current.
       void establishWatch(next);
     } finally {
       setBusy("");
     }
-  }, [hydrateHistory, hydratePrice, establishWatch]);
+  }, [hydrateHistory, hydratePrice, establishWatch, hydrateTokens]);
 
   /**
    * Re-scan balances against the live connection.
@@ -307,6 +378,7 @@ export default function App() {
         setSession(next);
         void hydrateHistory(next);
         void hydratePrice();
+        void hydrateTokens(next);
         // The set of addresses with activity can grow, so re-subscribe.
         void establishWatch(next);
       } finally {
@@ -314,7 +386,7 @@ export default function App() {
         if (!silent) setBusy("");
       }
     },
-    [hydrateHistory, hydratePrice, establishWatch],
+    [hydrateHistory, hydratePrice, establishWatch, hydrateTokens],
   );
 
   /** User-initiated refresh (Home screen button, after a send). */
@@ -350,13 +422,14 @@ export default function App() {
         const next: Session = { ...current, secrets, wallet, scan };
         setSession(next);
         void hydrateHistory(next);
+        void hydrateTokens(next);
         // The watched address set is entirely new.
         void establishWatch(next);
       } finally {
         setBusy("");
       }
     },
-    [hydrateHistory, establishWatch],
+    [hydrateHistory, establishWatch, hydrateTokens],
   );
 
   // A push notification means "something changed": scan quietly, no overlay.
@@ -408,11 +481,12 @@ export default function App() {
       setSession(next);
       void hydrateHistory(next);
       void hydratePrice();
+      void hydrateTokens(next);
       void establishWatch(next);
     } finally {
       setBusy("");
     }
-  }, [hydrateHistory, hydratePrice, establishWatch]);
+  }, [hydrateHistory, hydratePrice, establishWatch, hydrateTokens]);
 
   const lock = useCallback(() => {
     const current = sessionRef.current;
@@ -432,6 +506,13 @@ export default function App() {
     setHasExisting(hasVault());
     setHistory(null);
     setHistoryTotal(0);
+    // Token state is session-scoped: nothing survives the lock.
+    tokenEpochRef.current++; // invalidate any in-flight token scan
+    setTokens([]);
+    setTokensScanning(false);
+    setTokensError(false);
+    setLockedPhotons(0n);
+    setSelectedToken(null);
   }, []);
 
   // Auto-lock: the wallet locks itself as soon as the app leaves the foreground
@@ -494,8 +575,19 @@ export default function App() {
     );
   }
 
+  // The session handed to screens carries the token layer, merged from state
+  // (this object is display-only — sessionRef keeps the raw scan base).
+  // `session` is a Session here: the `if (!session)` branch already returned.
+  const enrichedSession: Session = {
+    ...session,
+    tokens,
+    tokensScanning,
+    tokensError,
+    lockedPhotons,
+  };
+
   const nav = {
-    session,
+    session: enrichedSession,
     go: setScreen,
     refresh,
     lock,
@@ -516,6 +608,12 @@ export default function App() {
     price,
     fiatEnabled,
     setFiatEnabled,
+    tokens,
+    tokensScanning,
+    tokensError,
+    lockedPhotons,
+    openToken,
+    openTokenSend,
   };
 
   return (
@@ -524,6 +622,19 @@ export default function App() {
       {screen === "receive" && <Receive nav={nav} />}
       {screen === "send" && <Send nav={nav} />}
       {screen === "settings" && <Settings nav={nav} />}
+      {screen === "tokens" && <Tokens nav={nav} />}
+      {screen === "tokenDetail" &&
+        (selectedToken ? (
+          <TokenDetail nav={nav} token={selectedToken} />
+        ) : (
+          <Home nav={nav} />
+        ))}
+      {screen === "tokenSend" &&
+        (selectedToken ? (
+          <TokenSend nav={nav} token={selectedToken} />
+        ) : (
+          <Home nav={nav} />
+        ))}
       {busy && (
         <div className="sheet-backdrop">
           <div className="sheet center">

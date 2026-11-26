@@ -33,6 +33,8 @@
  *   • Identity is the REF, never name/ticker — two tokens can share a string.
  */
 import {
+  DUST_LIMIT,
+  filterFundingCandidates,
   ftScript,
   nftScript,
   packRef,
@@ -41,13 +43,20 @@ import {
   parseP2pkhScript,
   p2pkhScript,
   scriptHash,
+  selectRxdFunding,
   tokenScriptKind,
+  transferFungible,
+  transferToken,
   zeroRefs,
   type ElectrumClient,
+  type NetworkName,
   type Utxo,
 } from "@radiant-core/sdk";
 import { decode as cborDecode } from "cbor-x";
-import type { ScannedAddress } from "./wallet";
+import type { ScanResult, ScannedAddress } from "./wallet";
+
+/** Ruled-out FT amounts below the dust floor — re-exported for the send UI. */
+export const FT_DUST_LIMIT = DUST_LIMIT;
 
 /** 36 zero bytes — the wildcard ref the indexer keys token scripts under. */
 export const ZERO_REF = "00".repeat(36);
@@ -316,9 +325,13 @@ export function extractGlyphPayload(
   for (;;) {
     const at = hex.indexOf(GLYPH_MAGIC_PUSH, from);
     if (at < 0) return null;
-    const payload = decodePayload(hex, at + GLYPH_MAGIC_PUSH.length);
+    // `at` is a CHAR index and the magic is 8 chars (4 bytes), so the next
+    // BYTE index is (at + 8) / 2 — decodePayload indexes bytes, not chars.
+    // (Caught by scripts/glyph-helper-check.ts: a whole-byte slip here made
+    // every envelope unparseable despite the live probe's own decoder.)
+    const payload = decodePayload(hex, (at + GLYPH_MAGIC_PUSH.length) / 2);
     if (payload) return payload;
-    from = at + 2; // skip past this occurrence, try the next
+    from = at + 8; // skip past this occurrence, try the next
   }
 }
 
@@ -335,7 +348,9 @@ function decodePayload(
     start += 1;
   } else if (head === 0x4d) {
     if ((start + 3) * 2 + 2 > hex.length) return null;
-    length = (byteAt(start + 1) << 8) | byteAt(start + 2);
+    // 2-byte push length is little-endian on-chain (low byte first) — the
+    // reversed order here would silently fail every 76…255-byte payload.
+    length = byteAt(start + 1) | (byteAt(start + 2) << 8);
     start += 3;
   } else if (head === 0x4e) {
     if ((start + 5) * 2 + 2 > hex.length) return null;
@@ -636,4 +651,212 @@ export async function scanTokens(
     utxos,
     lockedPhotons: utxos.reduce((sum, u) => sum + u.value, 0n),
   };
+}
+
+/* -------------------------------------------------------- sending -------- */
+
+/**
+ * Token-free RXD owned by `ownerAddress`, screened for use as fee funding.
+ *
+ * `transferToken`/`transferFungible` sign ALL inputs with a single WIF, so the
+ * funding must belong to the same address that owns the token UTXO — and it
+ * must contain no token refs of its own. `selectRxdFunding` inside the SDK
+ * re-screens again at build time; this pass makes the boundary explicit and
+ * gives the fee estimator the same candidate list the senders will use.
+ */
+export function tokenFreeFunding(
+  scan: ScanResult,
+  ownerAddress: string,
+): Utxo[] {
+  const owned = scan.utxos
+    .filter((u) => u.ownerAddress === ownerAddress)
+    .map((u) => ({
+      txid: u.txid,
+      vout: u.vout,
+      value: u.value,
+      script: u.script,
+      height: u.height,
+      refs: u.refs,
+    }));
+  // A conforming server never surfaces token scripts under the plain P2PKH
+  // hash, so `owned` is already token-free — but a server returning them
+  // there must never reach the signing step. Screen regardless.
+  return filterFundingCandidates(owned);
+}
+
+/** TokenUtxo → the SDK Utxo shape the transfer functions expect. */
+function sdkUtxoOf(u: TokenUtxo): Utxo {
+  return {
+    txid: u.txid,
+    vout: u.vout,
+    value: u.value,
+    script: u.script,
+    height: u.height,
+  };
+}
+
+export interface TokenSendParams {
+  client: ElectrumClient;
+  scan: ScanResult;
+  token: TokenBalance;
+  to: string;
+  feeRate?: bigint;
+  network?: NetworkName;
+}
+
+export interface TokenSendResult {
+  txid: string;
+  hex: string;
+  ref: string;
+  /** FT base units actually moved (== amount). NFT: 1n. */
+  sent: bigint;
+}
+
+/**
+ * Send a whole token. For an NFT this moves its single UTXO; for an FT it
+ * accumulates the full balance (no change output is emitted — the dust trap
+ * cannot occur when the output conserves the input exactly).
+ *
+ * Broadcasts internally (SDK `transferToken`/`transferFungible` call
+ * `broadcastTx`), so the caller must re-scan afterwards.
+ */
+export async function sendWholeToken(
+  params: TokenSendParams,
+): Promise<TokenSendResult> {
+  const { client, scan, token, to, network } = params;
+  const feeRate = params.feeRate ?? 10_000n;
+  const owner = token.utxos[0];
+  if (!owner) throw new Error("Internal error: token has no UTXOs");
+  const funding = tokenFreeFunding(scan, owner.ownerAddress);
+  if (funding.length === 0) {
+    throw new Error(
+      "No token-free RXD at this address to pay the network fee — top up the wallet first",
+    );
+  }
+  if (token.kind === "nft") {
+    const r = await transferToken({
+      client,
+      address: owner.ownerAddress,
+      wif: owner.ownerWif,
+      tokenUtxo: sdkUtxoOf(owner),
+      toAddress: to,
+      fundingUtxos: funding,
+      feeRate,
+      network,
+    });
+    return { ...r, ref: r.ref ?? token.ref, sent: token.amount };
+  }
+  const r = await transferFungible({
+    client,
+    address: owner.ownerAddress,
+    wif: owner.ownerWif,
+    tokenUtxos: token.utxos.map(sdkUtxoOf),
+    toAddress: to,
+    amount: token.amount,
+    fundingUtxos: funding,
+    feeRate,
+    network,
+  });
+  return { ...r, sent: r.sent };
+}
+
+export interface FtSendParams extends TokenSendParams {
+  /** Amount in FT base units (== photons). */
+  amount: bigint;
+}
+
+/**
+ * Send part of an FT balance. Guard rails around the SDK call:
+ *   • positive amount, cannot exceed the held balance;
+ *   • amount >= DUST_LIMIT — a Glyph FT output's value IS the amount, so a
+ *     sub-dust output is non-standard (the exact-balance trap: sending a small
+ *     whole balance must fail loudly, not produce an unminable transaction).
+ * The SDK emits FT change whenever the accumulation overshoots, conserving
+ * the covenant's sum. Broadcasts internally — re-scan after.
+ */
+export async function sendFtAmount(
+  params: FtSendParams,
+): Promise<TokenSendResult> {
+  const { client, scan, token, to, amount, network } = params;
+  const feeRate = params.feeRate ?? 10_000n;
+  if (amount <= 0n) throw new Error("Amount must be greater than zero");
+  if (amount > token.amount) {
+    throw new Error(`You hold ${token.amount.toString()} of this token`);
+  }
+  if (amount < DUST_LIMIT) {
+    throw new Error(
+      `Minimum send is ${DUST_LIMIT.toString()} base units — smaller amounts would be dust and unspendable`,
+    );
+  }
+  const owner = token.utxos[0];
+  if (!owner) throw new Error("Internal error: token has no UTXOs");
+  const funding = tokenFreeFunding(scan, owner.ownerAddress);
+  if (funding.length === 0) {
+    throw new Error(
+      "No token-free RXD at this address to pay the network fee — top up the wallet first",
+    );
+  }
+  const r = await transferFungible({
+    client,
+    address: owner.ownerAddress,
+    wif: owner.ownerWif,
+    tokenUtxos: token.utxos.map(sdkUtxoOf),
+    toAddress: to,
+    amount,
+    fundingUtxos: funding,
+    feeRate,
+    network,
+  });
+  return { ...r, sent: r.sent };
+}
+
+/**
+ * Approximate network fee for a token send, mirroring the SDK's own
+ * `selectRxdFunding` opts so the review sheet shows a number close to what the
+ * final transaction will pay. Returns null when no estimate is possible
+ * (no funding, impossible amount) — the UI treats that as "can't afford" only
+ * when the send itself confirms it.
+ */
+export function estimateTokenSendFee(
+  scan: ScanResult,
+  token: TokenBalance,
+  amount: bigint | null,
+  feeRate: bigint,
+): bigint | null {
+  const owner = token.utxos[0];
+  if (!owner) return null;
+  const funding = tokenFreeFunding(scan, owner.ownerAddress);
+  if (funding.length === 0) return null;
+  try {
+    if (token.kind === "nft") {
+      // Mirrors transferToken: 1 token output, one token input (~148 vbytes).
+      return selectRxdFunding(funding, 0n, feeRate, {
+        baseOutputCount: 1,
+        extraInputBytes: 148n,
+        withChange: true,
+      }).fee;
+    }
+    const amt = amount ?? token.amount;
+    if (amt <= 0n || amt > token.amount) return null;
+    // Mirror transferFungible's accumulation: largest UTXOs first.
+    const sorted = [...token.utxos].sort((a, b) =>
+      a.value < b.value ? 1 : a.value > b.value ? -1 : 0,
+    );
+    let spend = 0;
+    let sum = 0n;
+    for (const u of sorted) {
+      sum += u.value;
+      spend++;
+      if (sum >= amt) break;
+    }
+    if (sum < amt) return null;
+    const outputs = 1 + (sum > amt ? 1 : 0);
+    return selectRxdFunding(funding, 0n, feeRate, {
+      baseOutputCount: outputs,
+      extraInputBytes: BigInt(148 * spend),
+      withChange: true,
+    }).fee;
+  } catch {
+    return null;
+  }
 }

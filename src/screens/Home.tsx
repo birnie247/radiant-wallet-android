@@ -90,10 +90,16 @@ export default function Home({ nav }: { nav: Nav }) {
                 {formatRxd(scan.unconfirmed, 6)} pending
               </span>
             )}
+            {nav.lockedPhotons > 0n && (
+              <span style={{ color: "var(--accent)" }}>
+                {formatRxd(nav.lockedPhotons, 4)} RXD in tokens — not spendable
+                as fees
+              </span>
+            )}
           </div>
         </div>
 
-        <div className="actions">
+        <div className="actions trio">
           <button className="action" onClick={() => nav.go("send")}>
             <span className="glyph">↑</span>
             Send
@@ -101,6 +107,10 @@ export default function Home({ nav }: { nav: Nav }) {
           <button className="action" onClick={() => nav.go("receive")}>
             <span className="glyph">↓</span>
             Receive
+          </button>
+          <button className="action" onClick={() => nav.go("tokens")}>
+            <span className="glyph">◈</span>
+            Tokens
           </button>
         </div>
 

@@ -44,3 +44,4 @@ dom*.html
 .idea/
 .DS_Store
 Thumbs.db
+dist-test-glyph/

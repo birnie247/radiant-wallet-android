@@ -13,6 +13,7 @@
     "sync": "npm run build && cap sync android",
     "android": "cap open android",
     "check:browser": "vite build -c vite.test.config.ts && node dist-test/browser-path-check.js",
+    "check:glyphs": "vite build -c vite.glyph-check.config.ts && node dist-test-glyph/glyph-helper-check.js",
     "check:smoke": "node scripts/smoke-browser.mjs",
     "icons": "node scripts/build-icons.mjs",
     "store:assets": "node scripts/build-store-assets.mjs",
