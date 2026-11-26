@@ -1,6 +1,6 @@
 {
   "name": "rxd-wallet",
-  "version": "1.3.1",
+  "version": "1.4.0",
   "private": true,
   "license": "MIT",
   "type": "module",
@@ -20,7 +20,8 @@
     "bundle": "node scripts/bundle-release.mjs",
     "publish:release": "node scripts/publish-release.mjs",
     "check:live": "node scripts/live-e2e.mjs",
-    "probe": "node scripts/probe-servers.mjs"
+    "probe": "node scripts/probe-servers.mjs",
+    "probe:glyphs": "node scripts/probe-glyphs.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.6.0",
@@ -29,6 +30,7 @@
     "@radiant-core/radiantjs": "^2.0.6",
     "@radiant-core/sdk": "^0.2.1",
     "buffer": "^6.0.3",
+    "cbor-x": "^1.6.4",
     "js-sha512": "^0.8.0",
     "qrcode": "^1.5.4",
     "react": "^19.3.1",
