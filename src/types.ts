@@ -55,6 +55,13 @@ export interface Nav {
   allowScreenshots: boolean;
   setAllowScreenshots: (allow: boolean) => void;
   /**
+   * Re-derive this wallet under another SLIP-44 coin type and re-scan.
+   *
+   * Changing the coin type re-encrypts the vault, so the passphrase is required;
+   * a wrong one throws before anything on screen changes.
+   */
+  switchDerivation: (coinType: number, passphrase: string) => Promise<void>;
+  /**
    * Background time allowed before the wallet locks itself. 0 locks the moment
    * the app leaves the foreground, so returning always asks for a biometric or
    * the passphrase.

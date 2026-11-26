@@ -30,7 +30,7 @@ WHAT MAKES IT DIFFERENT
 
 • Your servers, your choice. A built-in list of ElectrumX endpoints, plus the ability to add, test and remove your own. The wallet refuses to let you remove the last one, and a failed server falls through to the next automatically.
 
-• Restores old seeds too. Wallets created before Radiant's coin type existed derived at m/44'/0'. Tick "This is a v1 seed" when restoring and the same 12 words reach the same addresses.
+• Restores old seeds too. Wallets created before Radiant's coin type existed derived at m/44'/0'. Restore finds that address set by itself, so the same 12 words reach the same addresses, and Settings can switch sets if it ever guesses wrong.
 
 WHAT YOU CAN DO
 
@@ -59,12 +59,12 @@ Roughly 2,750 characters — comfortably inside 4,000.
 ## What's new (500 max)
 
 ```
-New app identity for the Play release, plus three things worth updating for.
+Restores now find your funds, plus a smarter Recent Activity.
 
-• Restore a v1 seed: a checkbox on the restore screen derives the old m/44'/0' path, for phrases from wallets made before Radiant's coin type existed.
-• Your own ElectrumX servers: add, test with a real handshake, remove; built-ins are hidden rather than deleted, and the last server cannot be removed.
-• rxdexplorer.com is the new default endpoint, and the tip cross-check now compares against two distinct operators.
-• Android 9+ only (minSdk 28).
+• Restore checks the chain for both address sets (m/44'/512' and the older m/44'/0') and uses the one with activity — no checkbox to guess at.
+• Switch address set in Settings for a wallet that already restored on the wrong one. Nothing is moved or signed; the passphrase confirms it.
+• Recent Activity is collapsed to the latest transaction, expandable to the last 25.
+• Tap any address under Funds by address to copy it.
 ```
 
 ## Data safety answers

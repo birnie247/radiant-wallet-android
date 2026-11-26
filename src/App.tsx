@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { HDWallet } from "@radiant-core/sdk";
-import { hasVault, unlockVault, RADIANT_COIN_TYPE, type WalletSecrets } from "./lib/vault";
+import { hasVault, unlockVault, updateVaultSettings, RADIANT_COIN_TYPE, type WalletSecrets } from "./lib/vault";
 import { connect, crossCheckTip, scanWallet } from "./lib/wallet";
 import { getPreferredServer } from "./lib/servers";
 import { loadHistory, type HistoryEntry } from "./lib/history";
@@ -261,7 +261,8 @@ export default function App() {
 
       const wallet = HDWallet.fromMnemonic(secrets.mnemonic, {
         network: secrets.network,
-        // Absent means 512 (Radiant). A wallet restored from a v1 seed stores 0,
+        // Absent means 512 (Radiant). A wallet restored on the older address set
+        // stores 0, which is the only way the same phrase reaches those addresses.
         // which is the only way the same phrase reaches the old address set.
         coinType: secrets.coinType ?? RADIANT_COIN_TYPE,
       });
@@ -318,6 +319,45 @@ export default function App() {
 
   /** User-initiated refresh (Home screen button, after a send). */
   const refresh = useCallback(() => runScan(false), [runScan]);
+
+  /**
+   * Re-derive the same phrase under a different SLIP-44 coin type.
+   *
+   * Order matters and is deliberate: the passphrase is verified, then the new
+   * address set is scanned, and only then is the vault re-encrypted. A wrong
+   * passphrase or an unreachable server therefore leaves both the stored vault
+   * and the wallet on screen exactly as they were — no state can disagree with
+   * what is persisted.
+   */
+  const switchDerivation = useCallback(
+    async (coinType: number, passphrase: string) => {
+      const current = sessionRef.current;
+      if (!current) return;
+      setBusy("Checking passphrase…");
+      try {
+        // Throws on a wrong passphrase, before anything is derived or written.
+        const candidate = await unlockVault(passphrase);
+        const wallet = HDWallet.fromMnemonic(candidate.mnemonic, {
+          network: candidate.network,
+          coinType,
+        });
+        setBusy("Scanning the blockchain…");
+        const scan = await scanWallet(current.client, wallet, {
+          onProgress: setBusy,
+        });
+        // Persist last: from here on the wallet on screen matches the vault.
+        const secrets = await updateVaultSettings(passphrase, { coinType });
+        const next: Session = { ...current, secrets, wallet, scan };
+        setSession(next);
+        void hydrateHistory(next);
+        // The watched address set is entirely new.
+        void establishWatch(next);
+      } finally {
+        setBusy("");
+      }
+    },
+    [hydrateHistory, establishWatch],
+  );
 
   // A push notification means "something changed": scan quietly, no overlay.
   useEffect(() => {
@@ -460,6 +500,7 @@ export default function App() {
     refresh,
     lock,
     reconnect,
+    switchDerivation,
     busy,
     history,
     historyTotal,

@@ -14,6 +14,7 @@ import {
   buildPayment,
   connect,
   crossCheckTip,
+  detectCoinType,
   scanWallet,
   MAX_TIP_DRIFT,
 } from "../src/lib/wallet";
@@ -39,9 +40,9 @@ check(
   k0.address,
 );
 
-// 1b. The v1 ("legacy") seed path: same phrase, coin type 0. Settings exposes
-//     this as the "This is a v1 seed" checkbox, so a regression here means a
-//     restored old wallet shows an empty balance.
+// 1b. The v1 ("legacy") seed path: same phrase, coin type 0. Restore now
+//     detects this automatically and Settings can switch it, so a regression
+//     here means an old wallet shows an empty balance with no way to fix it.
 check(
   "default coin type is Radiant's 512",
   wallet.coinType === 512,
@@ -49,7 +50,7 @@ check(
 );
 const legacy = HDWallet.fromMnemonic(MNEMONIC, { network: "mainnet", coinType: 0 });
 const l0 = legacy.deriveKey(0);
-check("v1 seed derives at m/44'/0'/0'/0/0", l0.path === "m/44'/0'/0'/0/0", l0.path);
+check("pre-512 seed derives at m/44'/0'/0'/0/0", l0.path === "m/44'/0'/0'/0/0", l0.path);
 check(
   "v1 and v2 addresses are different for the same phrase",
   l0.address !== k0.address,
@@ -69,6 +70,107 @@ check(
     p2pkhScript(l0.address).startsWith("76a914"),
   l0.address,
 );
+
+// 1c. Coin-type auto-detection (restore) — the "my funds are gone" bug.
+//     A phrase carries no marker saying which BIP44 set it belongs to, so the
+//     only way to tell an old wallet from a new one is to ask the chain. The
+//     change-chain cases matter: a wallet that has only ever SENT keeps its
+//     remaining funds on …/1/i, so probing the receive chain alone would call a
+//     funded seed empty.
+{
+  const legacyAddrs = [0, 1].flatMap((change) =>
+    legacy.deriveRange(0, 20, change).map((k) => k.address),
+  );
+  const currentAddrs = [0, 1].flatMap((change) =>
+    wallet.deriveRange(0, 20, change).map((k) => k.address),
+  );
+
+  const clientFor = (withHistory: Iterable<string>) => {
+    const has = new Set(withHistory);
+    return {
+      getHistory: async (address: string) =>
+        has.has(address) ? [{ tx_hash: "aa".repeat(32), height: 1 }] : [],
+    } as never;
+  };
+
+  const legacyGuess = await detectCoinType(
+    clientFor([legacyAddrs[0]]),
+    MNEMONIC,
+    "mainnet",
+  );
+  check(
+    "detects a pre-512 seed from its receive chain",
+    legacyGuess.coinType === 0 && !legacyGuess.inconclusive,
+    JSON.stringify(legacyGuess.hits),
+  );
+
+  // legacyAddrs[20] is m/44'/0'/0'/1/0 — the CHANGE chain, index 0.
+  const changeOnly = await detectCoinType(
+    clientFor([legacyAddrs[20]]),
+    MNEMONIC,
+    "mainnet",
+  );
+  check(
+    "detects a pre-512 seed funded only on its change chain",
+    changeOnly.coinType === 0,
+    JSON.stringify(changeOnly.hits),
+  );
+
+  const currentGuess = await detectCoinType(
+    clientFor([currentAddrs[0], currentAddrs[25]]),
+    MNEMONIC,
+    "mainnet",
+  );
+  check(
+    "keeps the current set when it holds the activity",
+    currentGuess.coinType === 512,
+    JSON.stringify(currentGuess.hits),
+  );
+
+  const empty = await detectCoinType(clientFor([]), MNEMONIC, "mainnet");
+  check(
+    "a fresh phrase stays on the current coin type",
+    empty.coinType === 512 && !empty.inconclusive,
+    JSON.stringify(empty.hits),
+  );
+
+  const offline = await detectCoinType(
+    {
+      getHistory: async () => {
+        throw new Error("offline");
+      },
+    } as never,
+    MNEMONIC,
+    "mainnet",
+  );
+  check(
+    "an unreachable server is inconclusive, never 'empty'",
+    offline.inconclusive === true && offline.coinType === 512,
+  );
+
+  // Bounded work, and BOTH chains of BOTH sets: 4 × DETECT_ADDRESSES lookups.
+  const probed: string[] = [];
+  await detectCoinType(
+    {
+      getHistory: async (address: string) => {
+        probed.push(address);
+        return [];
+      },
+    } as never,
+    MNEMONIC,
+    "mainnet",
+  );
+  const sawAll = [0, 1].every(
+    (change) =>
+      probed.includes(wallet.deriveKey(0, change).address) &&
+      probed.includes(legacy.deriveKey(0, change).address),
+  );
+  check(
+    "probes the change chain of both sets, 80 lookups",
+    probed.length === 80 && sawAll,
+    `${probed.length} address(es)`,
+  );
+}
 
 // 2. CSPRNG (Web Crypto path) — must produce a fresh 12-word mnemonic.
 const generated = HDWallet.generateMnemonic();
@@ -437,6 +539,29 @@ if (process.argv.includes("--live")) {
     "vault round-trips",
     (await vault.unlockVault("correct horse battery")).mnemonic === secrets.mnemonic,
   );
+
+  // Switching the address set re-encrypts the vault, so the value must survive
+  // and the passphrase must still guard it.
+  const switched = await vault.updateVaultSettings("correct horse battery", {
+    coinType: 0,
+  });
+  check("coin type is stored by a switch", switched.coinType === 0, String(switched.coinType));
+  check(
+    "re-encrypted vault keeps the new coin type",
+    (await vault.unlockVault("correct horse battery")).coinType === 0,
+  );
+  await vault.updateVaultSettings("correct horse battery", { coinType: 512 });
+  check(
+    "switching back restores the default set",
+    (await vault.unlockVault("correct horse battery")).coinType === 512,
+  );
+  let deriveGuard = false;
+  try {
+    await vault.updateVaultSettings("wrong horse battery", { coinType: 0 });
+  } catch {
+    deriveGuard = true;
+  }
+  check("a wrong passphrase cannot change the address set", deriveGuard);
 
   // Hand-build a LEGACY vault: schema 1, 310k iterations, 6-char passphrase.
   const enc = new TextEncoder();

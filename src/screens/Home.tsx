@@ -15,7 +15,9 @@ export default function Home({ nav }: { nav: Nav }) {
   // Which address was just copied, so the row can say so for a moment.
   const [copiedAddress, setCopiedAddress] = useState<string | null>(null);
 
-  const usedAddresses = scan.addresses.filter((a) => a.used).slice(0, 6);
+  // Every used address, not just the handful listed below: the count is a fact
+  // about the wallet and must not shrink to the display limit.
+  const usedCount = scan.addresses.filter((a) => a.used).length;
 
   // SPV summary. The wording lives in spv.ts so it can be tested: it must not
   // confuse "nothing confirmed yet" with "not checked" or with a failed proof.
@@ -153,8 +155,8 @@ export default function Home({ nav }: { nav: Nav }) {
               </div>
             </div>
             <div className="value">
-              {usedAddresses.length} address
-              {usedAddresses.length === 1 ? "" : "es"}
+              {usedCount} address
+              {usedCount === 1 ? "" : "es"}
             </div>
           </div>
         </div>

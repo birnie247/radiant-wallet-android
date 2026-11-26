@@ -11,7 +11,7 @@ ecosystem's own proven code rather than a re-implementation.
 
 |  |  |
 | --- | --- |
-| Version | 1.3.0 |
+| Version | 1.3.1 |
 | Licence | MIT, with Apache-2.0 artwork |
 | Android | minSdk 28 · targetSdk 36 |
 | Chain access | ElectrumX over WebSocket |
@@ -24,7 +24,7 @@ ecosystem's own proven code rather than a re-implementation.
 [Known issues and roadmap](#known-issues-and-roadmap) · [Licence](#licence)
 
 > **Just want the app?** Download
-> [`lumen-rxd-wallet-1.3.0.apk`](https://github.com/birnie247/radiant-wallet-android/releases/latest)
+> [`lumen-rxd-wallet-1.3.1.apk`](https://github.com/birnie247/radiant-wallet-android/releases/latest)
 > from Releases and tap it. Read [Before you trust it](#limitations) first — this is
 > unaudited software handling real money.
 
@@ -38,7 +38,7 @@ The distinction this repo keeps coming back to is **verified** versus **assumed*
 | Area | Status |
 | --- | --- |
 | Create wallet (BIP39 12-word) and restore 12–24 words | ✅ verified |
-| Restore a **v1 seed** (pre-coin-type derivation, `m/44'/0'`) | ✅ implemented behind an explicit checkbox |
+| Restore a **pre-512 seed** (`m/44'/0'`) | ✅ auto-detected on restore by probing both chains; switchable in Settings → Derivation |
 | Seed encrypted at rest (AES-256-GCM, PBKDF2-SHA256 600k, 12-char minimum) | ✅ implemented |
 | BIP44 discovery, gap limit 20, receive + change chains | ✅ verified |
 | Balance, UTXOs and history over ElectrumX | ✅ verified against mainnet |
@@ -326,7 +326,7 @@ or burns tokens.
 | Signing | `SIGHASH_ALL \| FORKID` = `0x41` |
 | Node P2P port | 7333 |
 
-### v1 seeds (restoring an older wallet)
+### Coin type: why the same phrase can show two wallets
 
 A coin type is part of the derivation path, so the *same* BIP39 phrase produces a
 completely different address set under `m/44'/0'` than under `m/44'/512'`. Seeds
@@ -334,18 +334,24 @@ made before Radiant's coin type existed were derived with **0**, and the SDK's
 `HDWalletOptions.coinType` documents exactly that switch: *"Pass 0 only to
 recover legacy wallets created before the coin-type-512 default."*
 
-The restore screen therefore has a **“This is a v1 seed”** checkbox:
+Nothing inside a phrase says which set it belongs to, so **restore asks the
+chain**: it derives the first 20 addresses of *both* chains for coin type 512 and
+for coin type 0 — 80 `getHistory` calls in total — and keeps whichever set has
+activity. Change addresses are included deliberately: a wallet that has only ever
+*sent* keeps its remaining funds on `…/1/i`, so probing only `…/0/i` would call a
+funded seed empty. If neither set shows activity, or no server answers, restore
+stays on `m/44'/512'` and says so instead of guessing silently.
 
-- unticked (default) → `m/44'/512'` — every wallet this app creates;
-- ticked → `m/44'/0'` — the old scheme, stored as `coinType: 0` in the vault so
-  every later unlock derives identically (inferring it instead would silently
-  break the wallet on the next launch);
-- Settings → About shows the live path plus a `v1 seed` badge, so a restored
-  wallet never leaves you guessing which scheme it uses.
+A restore can still land on the wrong set — offline, or a wallet funded after the
+restore — so **Settings → Derivation → Switch address set** re-derives the same
+phrase under the other coin type. It asks for the passphrase (the vault is
+re-encrypted with the new value) and rescans; it signs, sends and moves nothing.
+Funds on the other set stay exactly where they are and reappear when you switch
+back.
 
-Ticking it for a modern seed shows an empty wallet, and leaving it unticked for a
-v1 seed does the same — the flag is the difference between “restored” and
-“restored, then found its funds”.
+The chosen coin type is stored in the vault as `coinType` (`0` only for the old
+scheme; absent means 512), so every later unlock derives identically. Re-detecting
+on each launch would silently empty the wallet whenever a probe failed.
 
 ### Refs: where a naive wallet burns tokens
 
