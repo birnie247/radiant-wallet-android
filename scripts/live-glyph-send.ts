@@ -66,6 +66,7 @@ const BROADCAST = flag("--broadcast");
 const CONFIRMED = process.env.RXD_SEND_CONFIRM === "SEND";
 const TO = opt("--to");
 const AMOUNT = opt("--amount");
+const REF = opt("--ref"); // select a specific token by display ref "txid:vout"
 const TICKER = opt("--ticker") || "LUMEN";
 const SUPPLY = BigInt(opt("--supply") || "1000000");
 
@@ -206,6 +207,7 @@ async function doMint(scan: ScanResult, addresses: ScannedAddress[]) {
 }
 
 // ------------------------------------------------------------------ main --
+let mintedRef: string | null = null;
 console.log("\n[1] RXD scan (receive + change chains)");
 let { addresses, scan } = await scanRxd();
 info(`${addresses.filter((a) => a.used).length} used address(es), ${scan.utxos.length} RXD utxo(s), total ${photonsToRxd(scan.total)} RXD`);
@@ -220,6 +222,7 @@ if (MINT) {
     client.close();
     process.exit(1);
   }
+  mintedRef = minted.ref;
   // Give the mempool a moment, then re-scan so the new token + change are visible.
   info("waiting 4s for the reveal to propagate…");
   await new Promise((r) => setTimeout(r, 4000));
@@ -249,7 +252,11 @@ if (tokenResult.tokens.length === 0) {
 
 // ------------------------------------------------------------- pick send --
 console.log("\n[4] Select token + destination");
-const token = tokenResult.tokens[0];
+// When minting, target the freshly minted artifact; else --ref if given; else first.
+const token =
+  (mintedRef && tokenResult.tokens.find((t) => t.ref === mintedRef)) ||
+  (REF && tokenResult.tokens.find((t) => t.refDisplay.toLowerCase() === REF.toLowerCase())) ||
+  tokenResult.tokens[0];
 const dest = TO || wallet.deriveKey(1, 0).address;
 info(`token   : ${token.kind} ${token.refDisplay}`);
 info(`dest    : ${dest}${TO ? "" : "  (default: own receive[1] — self-send)"}`);
