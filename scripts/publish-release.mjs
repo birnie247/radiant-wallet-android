@@ -45,10 +45,29 @@ const size = statSync(apk).size;
 const sha256 = createHash("sha256").update(bytes).digest("hex");
 const assetName = basename(apk);
 
+// The APK is the human install path; the AAB is what Play Console wants. Both are
+// signed with the local upload key, so ship both when the bundle was built.
+const artifacts = [apk, join("dist-android", `lumen-rxd-wallet-${version}.aab`)]
+  .filter((file) => existsSync(file))
+  .map((file) => {
+    const data = readFileSync(file);
+    return {
+      bytes: data,
+      size: data.length,
+      sha256: createHash("sha256").update(data).digest("hex"),
+      name: basename(file),
+      contentType: file.endsWith(".apk")
+        ? "application/vnd.android.package-archive"
+        : "application/octet-stream",
+    };
+  });
+
 console.log(`repo   ${repoSlug}`);
 console.log(`tag    ${tag}`);
-console.log(`asset  ${assetName}  ${size} bytes`);
-console.log(`sha256 ${sha256}`);
+for (const a of artifacts) {
+  console.log(`asset  ${a.name}  ${a.size} bytes`);
+  console.log(`sha256 ${a.sha256}`);
+}
 
 async function api(path, init = {}) {
   const res = await fetch(`${API}${path}`, {
@@ -68,7 +87,14 @@ function buildBody() {
   const notesFile = join("docs", `release-notes-${version}.md`);
   if (existsSync(notesFile)) {
     console.log(`notes  ${notesFile}`);
-    return readFileSync(notesFile, "utf8");
+    const notes = readFileSync(notesFile, "utf8");
+    // Notes are used verbatim, so a hash typed by hand can drift from the bytes
+    // being uploaded. Warn rather than fail: the notes may legitimately quote the
+    // AAB's hash instead.
+    if (!notes.includes(sha256)) {
+      console.warn(`  ! ${notesFile} does not mention the APK's SHA-256 — check that table`);
+    }
+    return notes;
   }
   return [
     `Signed APK for Lumen RXD Wallet ${version}, ready to sideload.`,
@@ -136,31 +162,39 @@ let release;
   }
 }
 
-// Skip the upload if this exact asset is already attached.
-const already = (release.assets ?? []).find((a) => a.name === assetName);
-if (already && already.size === size) {
-  console.log(`asset already attached (${already.size} bytes) — nothing to do`);
-} else {
+for (const artifact of artifacts) {
+  // Skip an artifact that is already attached at exactly this size.
+  const already = (release.assets ?? []).find((a) => a.name === artifact.name);
+  if (already && already.size === artifact.size) {
+    console.log(`${artifact.name} already attached (${already.size} bytes) — nothing to do`);
+    continue;
+  }
   const up = await fetch(
-    `https://uploads.github.com/repos/${repoSlug}/releases/${release.id}/assets?name=${encodeURIComponent(assetName)}`,
+    `https://uploads.github.com/repos/${repoSlug}/releases/${release.id}/assets?name=${encodeURIComponent(artifact.name)}`,
     {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
         Accept: "application/vnd.github+json",
         "User-Agent": "rxd-wallet-release",
-        "Content-Type": "application/vnd.android.package-archive",
-        "Content-Length": String(bytes.length),
+        "Content-Type": artifact.contentType,
+        "Content-Length": String(artifact.size),
       },
-      body: bytes,
+      body: artifact.bytes,
     },
   );
   const text = await up.text();
-  if (!up.ok) die(`upload failed ${up.status}: ${text.slice(0, 400)}`);
+  if (!up.ok) die(`upload of ${artifact.name} failed ${up.status}: ${text.slice(0, 400)}`);
   const asset = JSON.parse(text);
-  if (asset.size !== size) die(`uploaded size ${asset.size} != local ${size}`);
-  console.log(`asset uploaded (id ${asset.id}, ${asset.size} bytes)`);
+  if (asset.size !== artifact.size) {
+    die(`uploaded ${artifact.name} is ${asset.size} bytes, local file is ${artifact.size}`);
+  }
+  console.log(`${artifact.name} uploaded (id ${asset.id}, ${asset.size} bytes)`);
 }
 
 console.log(`\n✓ ${release.html_url}`);
-console.log(`  download: https://github.com/${repoSlug}/releases/download/${tag}/${assetName}`);
+for (const artifact of artifacts) {
+  console.log(
+    `  download: https://github.com/${repoSlug}/releases/download/${tag}/${artifact.name}`,
+  );
+}

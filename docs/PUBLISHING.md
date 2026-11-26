@@ -32,15 +32,26 @@ Play uses **Play App Signing**: the key you generate here is the *upload* key;
 Google holds the actual app-signing key. Never let anyone else generate it, and
 back it up offline.
 
-This project already has one at `android/rxd-release.jks` (JKS, alias `rxd`,
-4096-bit RSA, SHA-256 `226f0d84…725a7d`). It is the key that signed 1.0.13, 1.1.0
-and 1.1.1, so reuse it rather than making another — its subject still reads
-`O=Radiant Wallet` because that is what the shipped certificate says, and a
-certificate's subject cannot be changed without changing the key. For a *new* key,
-the equivalent command is:
+This project already has one at `android/rxd-release.jks` (PKCS12, alias `rxd`,
+4096-bit RSA, SHA-256 `84f7a01f…f1075e56`). It signs 1.3.0 onward, and its subject
+reads `O=Lumen RXD Wallet`.
+
+The key that signed 1.0.13–1.2.0 (SHA-256 `226f0d84…725a7d`, subject
+`O=Radiant Wallet`) went missing with the machine that generated it, so 1.3.0 was
+re-signed with a new key. Consequences, stated plainly:
+
+- An installed 1.2.0-or-older build **cannot be upgraded in place** — Android rejects
+  a package whose signing certificate differs. Uninstalling to install 1.3.0 wipes
+  the encrypted vault, so the seed has to be restored.
+- Play is unaffected: 1.2.0 was never uploaded, so Play App Signing holds no key for
+  this package. If you upload 1.3.0 as the first release, this key simply becomes the
+  registered upload key.
+- From here on, keep the keystore. Losing it again costs the same reinstall.
+
+For a *new* key, the equivalent command is:
 
 ```powershell
-keytool -genkeypair -v -keystore android/rxd-release.jks -storetype JKS `
+keytool -genkeypair -v -keystore android/rxd-release.jks `
   -alias rxd -keyalg RSA -keysize 4096 -validity 10000 `
   -dname "CN=Birnie, O=Lumen RXD Wallet, C=CA"
 ```
@@ -61,12 +72,14 @@ signing key stays safe with Google. Keep an offline copy anyway.
 ### 2. Build the bundle
 
 ```powershell
-cd android
-.\gradlew.bat bundleRelease
+npm run bundle      # → dist-android/lumen-rxd-wallet-<v>.aab, signed
 ```
 
-Play requires an **AAB** for new apps — not an APK. Bump `versionCode` in
-`android/app/build.gradle` before **every** upload; it must always increase.
+Play requires an **AAB** for new apps — not an APK. The version comes from
+`package.json` and `versionCode` is derived as `major*10000 + minor*100 + patch`, so it
+increases on its own; just never reuse a version you have already uploaded.
+`npm run publish:release` attaches this AAB to the GitHub release beside the APK, so the
+file Play wants is downloadable without a build machine.
 
 ### 3. Host the privacy policy
 

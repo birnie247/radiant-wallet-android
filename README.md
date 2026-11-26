@@ -11,7 +11,7 @@ ecosystem's own proven code rather than a re-implementation.
 
 |  |  |
 | --- | --- |
-| Version | 1.2.0 |
+| Version | 1.3.0 |
 | Licence | MIT, with Apache-2.0 artwork |
 | Android | minSdk 28 · targetSdk 36 |
 | Chain access | ElectrumX over WebSocket |
@@ -24,7 +24,7 @@ ecosystem's own proven code rather than a re-implementation.
 [Known issues and roadmap](#known-issues-and-roadmap) · [Licence](#licence)
 
 > **Just want the app?** Download
-> [`lumen-rxd-wallet-1.1.1.apk`](https://github.com/birnie247/radiant-wallet-android/releases/latest)
+> [`lumen-rxd-wallet-1.3.0.apk`](https://github.com/birnie247/radiant-wallet-android/releases/latest)
 > from Releases and tap it. Read [Before you trust it](#limitations) first — this is
 > unaudited software handling real money.
 
@@ -48,6 +48,8 @@ The distinction this repo keeps coming back to is **verified** versus **assumed*
 | Transaction history with confirmation counts | ✅ verified against synthetic transactions |
 | SPV: headers, chain linkage, merkle proofs | ✅ verified against live mainnet |
 | Tap a transaction to open it in a block explorer | ✅ live link returns HTTP 200 |
+| Recent activity collapsed to the latest transaction, expandable to the last 25 | ✅ implemented |
+| Tap an address under *Funds by address* to copy it | ✅ implemented |
 | Biometric unlock (AndroidKeyStore + BiometricPrompt) | ✅ verified on device, enrol and unlock |
 | Screenshots and recording blocked for the seed | ✅ verified on device (`SECURE` window flag) |
 | Auto-lock when the app leaves the foreground | ✅ device-tested |
@@ -453,20 +455,21 @@ src/
     price.ts        RXD/USD with cache and fallback
     explorer.ts     txid → explorer URL (validated)
     openUrl.ts      JS side of the OpenUrl plugin
+    clipboard.ts    copy to the clipboard, WebView-safe fallback, reports success
     reauth.ts       per-payment confirmation
     autoLock.ts     lock policy (pure, unit-tested)
   screens/
     Onboarding.tsx  create or restore, seed backup
     Unlock.tsx      passphrase or biometric, auto-prompt on resume
-    Home.tsx        balance, activity, funds by address
+    Home.tsx        balance, latest activity, copyable address balances
     Receive.tsx     QR + address
     Send.tsx        compose → review → confirm → broadcast
     Settings.tsx    servers, auto-lock, biometrics, display, seed, wipe
   components/
-    ActivityList.tsx  history rows, confirmation badges, explorer links
+    ActivityList.tsx  latest row + expander, confirmation badges, explorer links
     BrandMark.tsx     the Radiant mark, themed
   shims/            browser replacements for Node internals
-android/app/src/main/java/org/radiant/wallet/
+android/app/src/main/java/com/rxdexplorer/lumen/
   BiometricVaultPlugin.java   AndroidKeyStore + BiometricPrompt
   ScreenSecurityPlugin.java   WindowManager FLAG_SECURE
   OpenUrlPlugin.java          allowlisted https → system browser
@@ -549,9 +552,10 @@ npm run publish:release
 ```
 
 This creates the `v<version>` tag and release, uploads the APK as an asset, and
-prints the download URL. It is safe to re-run: an existing release is reused and an
-already-attached asset of the same size is skipped, so a failed upload doesn't leave
-a 422 behind.
+prints the download URL. If `npm run bundle` has been run too, the signed AAB is
+attached alongside it, so the Play upload file is in the same place. It is safe to
+re-run: an existing release is reused and an already-attached asset of the same size
+is skipped, so a failed upload doesn't leave a 422 behind.
 
 The release body is generated from the exact bytes being uploaded — size and SHA-256
 are computed from the file, never typed. To write proper notes instead, add
@@ -571,9 +575,9 @@ same field at build time, so it cannot drift.
 One-time setup, and the key must be yours:
 
 ```bash
-keytool -genkeypair -v -keystore android/rxd-release.jks -storetype JKS \
-  -alias rxd-release -keyalg RSA -keysize 4096 -validity 10000 \
-  -dname "CN=Birnie, O=Radiant Wallet, C=CA"
+keytool -genkeypair -v -keystore android/rxd-release.jks \
+  -alias rxd -keyalg RSA -keysize 4096 -validity 10000 \
+  -dname "CN=Birnie, O=Lumen RXD Wallet, C=CA"
 ```
 
 Then `android/keystore.properties`:
@@ -581,13 +585,15 @@ Then `android/keystore.properties`:
 ```properties
 storeFile=rxd-release.jks
 storePassword=…
-keyAlias=rxd-release
+keyAlias=rxd
 keyPassword=…
 ```
 
 `storeFile` is resolved relative to `android/`, not the repo root. Both files are
 gitignored. With no keystore present, `assembleRelease` yields an **unsigned** APK
-rather than silently falling back to a debug key.
+rather than silently falling back to a debug key. The key that signed 1.0.13–1.2.0
+is gone; 1.3.0 uses a new one, so older installs must be restored from seed. See
+[docs/PUBLISHING.md](docs/PUBLISHING.md).
 
 ### If a release build misbehaves
 

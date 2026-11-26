@@ -538,6 +538,50 @@ button.row-button:active {
   color: var(--text-faint);
 }
 
+/* Funds by address: the whole row copies, and says so afterwards. */
+.copy-tag {
+  flex: 0 0 auto;
+  padding-left: 10px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.copy-tag.copied {
+  color: var(--success);
+}
+
+/* Recent activity: the newest row, plus a one-tap expander for the last 25. */
+.expand-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  margin-top: 8px;
+  padding: 9px 12px;
+  appearance: none;
+  background: transparent;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--text-faint);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.expand-toggle:active {
+  background: var(--bg-elev);
+  color: var(--text);
+}
+
+.expand-caret {
+  font-size: 10px;
+}
+
 .row .grow {
   flex: 1;
   min-width: 0;
