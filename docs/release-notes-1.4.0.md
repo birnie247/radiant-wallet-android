@@ -1,9 +1,13 @@
-**Lumen RXD Wallet 1.4.0** — Glyph tokens arrive. The wallet can now **mint** a
-fungible token (FT) or a non-fungible token (NFT) and **send** it, whole or in
-part, to another address. Every part of that path was exercised against mainnet
-through `wss://rxdexplorer.com` before this release: a real mint, a real partial
-FT send with change, a real NFT transfer to an external address, and a sub-dust
-send that the wallet correctly refused.
+**Lumen RXD Wallet 1.4.0** — Glyph tokens arrive. The wallet now **displays** the
+Glyph tokens it owns and **sends** them, whole or in part, to another address.
+The send path was exercised against mainnet through `wss://rxdexplorer.com`
+before this release: a real partial FT send with change, a real NFT transfer to
+an external address, and a sub-dust send that the wallet correctly refused.
+
+> **Mint is not in the app yet.** Minting an FT/NFT is implemented in the SDK and
+> was proven on mainnet through the test harness (`scripts/live-glyph-send.ts
+> --mint` / `--mint-ft`), but 1.4.0 ships **no in-app mint screen**. An in-app
+> mint UI is the next step. This release is view + send.
 
 ## What 1.4.0 adds
 
@@ -45,13 +49,14 @@ key. The send screen says so when an address has no fee budget.
 
 ## Live evidence
 
-Mint (FT and NFT), whole and partial sends, and the dust rejection were all run
-against mainnet during development. A partial FT send produced three outputs —
-the amount to the recipient, FT change back to the sender, and RXD change — with
-the input sum conserved exactly. An NFT send to an external address was confirmed
-by inspecting the accepted transaction and the destination's UTXO index. This is
-real evidence from real sends, but a handful of sends is not a track record:
-start small.
+Whole and partial sends and the dust rejection were run against mainnet through
+the app's own send helpers during development. A partial FT send produced three
+outputs — the amount to the recipient, FT change back to the sender, and RXD
+change — with the input sum conserved exactly. An NFT send to an external address
+was confirmed by inspecting the accepted transaction and the destination's UTXO
+index. Minting (FT and NFT) was proven separately via the SDK harness, not the
+app UI. This is real evidence from real sends, but a handful of sends is not a
+track record: start small.
 
 ## Install
 
@@ -106,10 +111,10 @@ Settings → ElectrumX server switches it or adds your own.
 
 Unaudited software handling real money. Balances still come from a single server,
 which cannot steal but can misreport state. SPV covers headers, checkpointed
-linkage and merkle inclusion, not the per-block difficulty rule. Glyph mint and
-transfer are live-tested but young — widen that coverage over time, and start
-small. Not implemented: QR scanning, WAVE names, background push notifications.
-Mainnet only.
+linkage and merkle inclusion, not the per-block difficulty rule. Glyph send is
+live-tested but young — widen that coverage over time, and start small. Not
+implemented: **in-app Glyph mint** (SDK/harness only for now), QR scanning, WAVE
+names, background push notifications. Mainnet only.
 
 ## Source
 

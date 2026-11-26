@@ -57,7 +57,7 @@ The distinction this repo keeps coming back to is **verified** versus **assumed*
 | Mainnet only | ✅ testnet removed — every testnet endpoint is dead |
 | Add / remove your own ElectrumX server | ✅ implemented; live add + handshake test verified on device |
 | Default server independent of this project | ❌ the default (`rxdexplorer.com`) is the maintainer's own box — tap Use on another server for full independence |
-| Glyph tokens — mint FT/NFT, send whole or partial | ✅ implemented; mint + transfer live-tested on mainnet (1.4.0) |
+| Glyph tokens — view + send (whole/partial) | ✅ implemented; send live-tested on mainnet (1.4.0). In-app mint UI pending |
 | QR scanning · WAVE names | ❌ not implemented |
 
 > **On broadcast:** the first funded transaction was sent with this build and
@@ -627,7 +627,7 @@ shipping.
 | More real sends | One mainnet send succeeded; widen that over time |
 | SPV difficulty rule | Headers, linkage and merkle proofs are verified; the per-block DAA is the last piece |
 | QR **scanning** | Display works; camera scanning does not exist yet |
-| Glyph tokens | Mint (FT/NFT) and send (whole/partial) implemented and live-tested on mainnet in 1.4.0; widen real-send coverage over time. A token can only be sent onward from an address that also holds RXD for the fee |
+| Glyph tokens | View + send (whole/partial) implemented and live-tested on mainnet in 1.4.0. **In-app mint UI not yet built** — mint is proven via the SDK/harness only. A token can only be sent onward from an address that also holds RXD for the fee |
 | WAVE names | Resolution helpers ship in the SDK; no wallet UI yet |
 | Keystore key invalidation | Survived in code, but only provable on a device that re-enrols a fingerprint |
 | Play Store | Deliberately shelved — financial apps need an organisation account. See [docs/PUBLISHING.md](docs/PUBLISHING.md) |
