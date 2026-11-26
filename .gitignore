@@ -46,3 +46,4 @@ dom*.html
 Thumbs.db
 dist-test-glyph/
 dist-test-glyph-send/
+scripts/.test-wallet.txt
